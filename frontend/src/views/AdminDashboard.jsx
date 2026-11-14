@@ -60,7 +60,7 @@ import {
   Layers
 } from 'lucide-react';
 import CourseContentAssignmentView from '@/components/admin/CourseContentAssignment';
-import { coursesData as initialCourses, getStoredCourses, saveStoredCourses } from '../data/courses';
+import { coursesData as initialCourses, getStoredCourses, saveStoredCourses, fetchAdminCourses, apiCreateCourse, apiUpdateCourse, apiDeleteCourse, apiUploadFile } from '../data/courses';
 import { blogsData as initialBlogs } from '../data/blogs';
 import { MASTER_QUESTION_BANK, SUBJECT_MASTER_LIST, CHAPTER_MASTER_LIST } from '../data/questionBank';
 
@@ -420,6 +420,18 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
   // 7. COURSE MASTER STATE
   const [courseActiveTab, setCourseActiveTab] = useState('Table'); // 'Basic Information' or 'Table'
   const [courseList, setCourseList] = useState(() => getStoredCourses());
+  const [isSavingCourse, setIsSavingCourse] = useState(false);
+  const [courseUploadLoading, setCourseUploadLoading] = useState(false);
+  const [courseSaveError, setCourseSaveError] = useState('');
+
+  // Fetch courses from server database on mount to guarantee multi-admin sync
+  useEffect(() => {
+    fetchAdminCourses().then((data) => {
+      if (Array.isArray(data)) {
+        setCourseList(data);
+      }
+    });
+  }, []);
 
   // Keep persistent storage updated whenever courseList changes
   useEffect(() => {
@@ -458,36 +470,40 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
   const [courseSearchTerm, setCourseSearchTerm] = useState('');
   const [courseModalOpen, setCourseModalOpen] = useState(false);
 
-  const handleSaveCourse = (e) => {
+  const handleSaveCourse = async (e) => {
     e.preventDefault();
-    if (!courseForm.title.trim()) return;
+    if (!courseForm.title.trim()) {
+      alert('Course Title is required.');
+      return;
+    }
+    if (!courseForm.exam?.trim()) {
+      alert('Exam is required.');
+      return;
+    }
 
-    const autoSlug = courseForm.slug || courseForm.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const autoSlug = courseForm.slug?.trim() || courseForm.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const priceFormatted = courseForm.discountedPrice || courseForm.originalPrice || '4999';
     const origPriceFormatted = courseForm.originalPrice || (parseInt(priceFormatted) * 2).toString();
-    const discountFormatted = courseForm.discount || '50% OFF';
 
-    if (courseForm.id) {
-      setCourseList(courseList.map(c => c.id === courseForm.id ? {
+    // Validate that discounted price does not exceed original price
+    const numOrig = Number(origPriceFormatted) || 0;
+    const numDisc = Number(priceFormatted) || 0;
+    if (numOrig > 0 && numDisc > numOrig) {
+      alert('Validation Error: Discounted Price cannot be greater than Original Price.');
+      return;
+    }
+
+    const discountFormatted = courseForm.discount || (numOrig > numDisc && numOrig > 0 ? `${Math.round(((numOrig - numDisc) / numOrig) * 100)}% OFF` : '50% OFF');
+
+    setIsSavingCourse(true);
+    setCourseSaveError('');
+
+    try {
+      const payload = {
         ...courseForm,
         slug: autoSlug,
         price: priceFormatted,
-        originalPrice: origPriceFormatted,
-        discount: discountFormatted,
-        rating: courseForm.rating || '4.9',
-        reviewsCount: courseForm.reviewsCount || 128,
-        studentsCount: courseForm.enrolledStudent || 1250,
-        duration: courseForm.duration || '60+ Hours',
-        lectures: courseForm.lectures || '80+ Lectures',
-        tests: courseForm.tests || '20+ Mock Tests'
-      } : c));
-    } else {
-      const newId = courseList.length ? Math.max(...courseList.map(c => c.id)) + 1 : 1;
-      const newCourse = {
-        ...courseForm,
-        id: newId,
-        slug: autoSlug,
-        price: priceFormatted,
+        discountedPrice: priceFormatted,
         originalPrice: origPriceFormatted,
         discount: discountFormatted,
         rating: courseForm.rating || '4.9',
@@ -500,12 +516,29 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
         image: courseForm.image || bannerBitSat2026Master,
         bannerImage: courseForm.bannerImage || bannerBitSat2026Master
       };
-      setCourseList([...courseList, newCourse]);
-    }
 
-    setCourseForm(defaultCourseForm);
-    setCourseActiveTab('Table');
-    setCourseModalOpen(false);
+      if (courseForm.id) {
+        await apiUpdateCourse(courseForm.id, payload);
+      } else {
+        await apiCreateCourse(payload);
+      }
+
+      // Re-fetch latest from central server database
+      const refreshed = await fetchAdminCourses();
+      setCourseList(refreshed);
+
+      setCourseForm(defaultCourseForm);
+      setCourseActiveTab('Table');
+      setCourseModalOpen(false);
+      alert(courseForm.id ? 'Course updated successfully!' : 'Course created and published successfully!');
+    } catch (err) {
+      console.error('[Course Save Error]', err);
+      const msg = err.message || 'Failed to save course to server database.';
+      setCourseSaveError(msg);
+      alert(msg);
+    } finally {
+      setIsSavingCourse(false);
+    }
   };
 
   const handleEditCourse = (course) => {
@@ -514,9 +547,17 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDeleteCourse = (id) => {
+  const handleDeleteCourse = async (id) => {
     if (window.confirm('Are you sure you want to delete this course from the master catalogue?')) {
-      setCourseList(courseList.filter(c => c.id !== id));
+      try {
+        await apiDeleteCourse(id);
+        const refreshed = await fetchAdminCourses();
+        setCourseList(refreshed);
+        alert('Course deleted successfully.');
+      } catch (err) {
+        console.error('[Course Delete Error]', err);
+        alert(err.message || 'Failed to delete course.');
+      }
     }
   };
 
@@ -3104,22 +3145,36 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                             <input
                               type="file"
                               accept="image/*"
-                              onChange={(e) => {
+                              onChange={async (e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
-                                  const url = URL.createObjectURL(file);
-                                  setCourseForm({ ...courseForm, image: url });
+                                  try {
+                                    setCourseUploadLoading(true);
+                                    const res = await apiUploadFile(file);
+                                    if (res.url) {
+                                      setCourseForm(prev => ({ ...prev, image: res.url }));
+                                    }
+                                  } catch (err) {
+                                    alert(err.message || 'Failed to upload image.');
+                                  } finally {
+                                    setCourseUploadLoading(false);
+                                  }
                                 }
                               }}
                               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-800 hover:file:bg-slate-200"
                             />
                           </div>
                           {courseForm.image && (
-                            <img
-                              src={courseForm.image}
-                              alt="Course Preview"
-                              className="w-40 h-24 object-cover rounded-xl border border-slate-200 shadow-xs mt-2"
-                            />
+                            <div className="relative inline-block mt-2">
+                              <img
+                                src={courseForm.image}
+                                alt="Course Preview"
+                                className="w-40 h-24 object-cover rounded-xl border border-slate-200 shadow-xs"
+                              />
+                              <span className="absolute bottom-1 right-1 bg-slate-900/80 text-emerald-400 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                                Saved on Server
+                              </span>
+                            </div>
                           )}
                         </div>
 
@@ -3131,22 +3186,36 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                             <input
                               type="file"
                               accept="image/*"
-                              onChange={(e) => {
+                              onChange={async (e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
-                                  const url = URL.createObjectURL(file);
-                                  setCourseForm({ ...courseForm, bannerImage: url });
+                                  try {
+                                    setCourseUploadLoading(true);
+                                    const res = await apiUploadFile(file);
+                                    if (res.url) {
+                                      setCourseForm(prev => ({ ...prev, bannerImage: res.url }));
+                                    }
+                                  } catch (err) {
+                                    alert(err.message || 'Failed to upload banner.');
+                                  } finally {
+                                    setCourseUploadLoading(false);
+                                  }
                                 }
                               }}
                               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-800 hover:file:bg-slate-200"
                             />
                           </div>
                           {courseForm.bannerImage && (
-                            <img
-                              src={courseForm.bannerImage}
-                              alt="Banner Preview"
-                              className="w-40 h-24 object-cover rounded-xl border border-slate-200 shadow-xs mt-2"
-                            />
+                            <div className="relative inline-block mt-2">
+                              <img
+                                src={courseForm.bannerImage}
+                                alt="Banner Preview"
+                                className="w-40 h-24 object-cover rounded-xl border border-slate-200 shadow-xs"
+                              />
+                              <span className="absolute bottom-1 right-1 bg-slate-900/80 text-emerald-400 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                                Saved on Server
+                              </span>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -3188,12 +3257,33 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                         <input
                           type="file"
                           accept="application/pdf"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const file = e.target.files?.[0];
-                            if (file) setCourseForm({ ...courseForm, scheduleFile: file.name });
+                            if (file) {
+                              try {
+                                setCourseUploadLoading(true);
+                                const res = await apiUploadFile(file);
+                                if (res.url) {
+                                  setCourseForm(prev => ({ ...prev, scheduleFile: res.url }));
+                                }
+                              } catch (err) {
+                                alert(err.message || 'Failed to upload PDF.');
+                              } finally {
+                                setCourseUploadLoading(false);
+                              }
+                            }
                           }}
                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-800 hover:file:bg-slate-200"
                         />
+                        {courseForm.scheduleFile && (
+                          <div className="mt-2 text-xs flex items-center gap-2 text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                            <FileText className="w-4 h-4 text-emerald-600" />
+                            <span className="font-bold">Roadmap PDF Attached:</span>
+                            <a href={courseForm.scheduleFile} target="_blank" rel="noreferrer" className="underline font-mono">
+                              {courseForm.scheduleFile.split('/').pop()}
+                            </a>
+                          </div>
+                        )}
                       </div>
 
                       {/* SLUG, META TITLE, META DESCRIPTION & COURSE LINK */}
@@ -3313,9 +3403,11 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="submit"
-                          className="px-6 py-2.5 bg-[#0052cc] hover:bg-[#003e99] text-white font-extrabold text-xs rounded-xl shadow-sm transition-all"
+                          disabled={isSavingCourse || courseUploadLoading}
+                          className="px-6 py-2.5 bg-[#0052cc] hover:bg-[#003e99] disabled:bg-slate-400 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
                         >
-                          {courseForm.id ? 'Update Course' : 'Save Course'}
+                          {isSavingCourse && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                          <span>{isSavingCourse ? 'Saving to Database...' : (courseForm.id ? 'Update Course' : 'Save Course')}</span>
                         </button>
 
                         {courseForm.id && (

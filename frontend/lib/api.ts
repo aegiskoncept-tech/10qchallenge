@@ -77,7 +77,21 @@ function setToStorage<T>(key: string, data: T): void {
 export const api = {
   // COURSES
   async getCourses(): Promise<Course[]> {
-    return getFromStorage<Course[]>(STORAGE_KEYS.COURSES, MOCK_COURSES);
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch('/api/admin/courses');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data)) {
+            setToStorage(STORAGE_KEYS.COURSES, json.data);
+            return json.data;
+          }
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
+    return getFromStorage<Course[]>(STORAGE_KEYS.COURSES, []);
   },
 
   async getCourseById(id: number): Promise<Course | null> {
@@ -86,11 +100,41 @@ export const api = {
   },
 
   async getCourseBySlug(slug: string): Promise<Course | null> {
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch(`/api/courses/${encodeURIComponent(slug)}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            return json.data;
+          }
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
     const courses = await this.getCourses();
     return courses.find((c) => c.slug.toLowerCase() === slug.toLowerCase()) || null;
   },
 
   async createCourse(course: Course): Promise<Course> {
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch('/api/admin/courses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(course),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            return json.data;
+          }
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
     const courses = await this.getCourses();
     const updated = [course, ...courses];
     setToStorage(STORAGE_KEYS.COURSES, updated);
@@ -98,6 +142,23 @@ export const api = {
   },
 
   async updateCourse(updatedCourse: Course): Promise<Course> {
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch(`/api/admin/courses/${updatedCourse.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedCourse),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            return json.data;
+          }
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
     const courses = await this.getCourses();
     const index = courses.findIndex((c) => c.id === updatedCourse.id);
     let updated: Course[];

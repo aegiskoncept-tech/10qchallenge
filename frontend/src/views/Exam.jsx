@@ -23,11 +23,22 @@ export default function Exam() {
     handleUpdate();
     window.addEventListener('10q_courses_updated', handleUpdate);
     window.addEventListener('storage', handleUpdate);
+
+    // Fetch live exam courses from server database
+    fetch(`/api/courses?exam=${encodeURIComponent(rawName)}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setCourses(json.data);
+        }
+      })
+      .catch((err) => console.warn('[Exam View] Using cached courses fallback:', err));
+
     return () => {
       window.removeEventListener('10q_courses_updated', handleUpdate);
       window.removeEventListener('storage', handleUpdate);
     };
-  }, []);
+  }, [rawName]);
 
   const relatedCourses = courses.filter(
     (c) => (c.exam && c.exam.toLowerCase() === rawName.toLowerCase()) || c.exam === 'BITSAT'

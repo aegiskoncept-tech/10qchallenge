@@ -35,12 +35,34 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
   useEffect(() => {
     const slug = getParamSlug();
     const foundCourse = getCourseBySlug(slug);
-    setCourse(foundCourse);
-    setIsLoaded(true);
+    if (foundCourse) {
+      setCourse(foundCourse);
+      setIsLoaded(true);
+    }
+
+    // Also fetch from central server database to ensure fresh data across all admins/devices
+    if (slug) {
+      fetch(`/api/courses/${encodeURIComponent(slug)}`)
+        .then((res) => res.json())
+        .then((json) => {
+          if (json.success && json.data) {
+            setCourse(json.data);
+          }
+        })
+        .catch((err) => {
+          console.warn('[CourseDetail] Server fetch warning:', err);
+        })
+        .finally(() => {
+          setIsLoaded(true);
+        });
+    } else {
+      setIsLoaded(true);
+    }
 
     const handleUpdate = () => {
       const currentSlug = getParamSlug();
-      setCourse(getCourseBySlug(currentSlug));
+      const updated = getCourseBySlug(currentSlug);
+      if (updated) setCourse(updated);
     };
 
     window.addEventListener('10q_courses_updated', handleUpdate);

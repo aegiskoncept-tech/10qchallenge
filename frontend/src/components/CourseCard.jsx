@@ -17,6 +17,17 @@ export default function FeaturedCoursesSection({ limit = 6 }) {
     handleUpdate();
     window.addEventListener('10q_courses_updated', handleUpdate);
     window.addEventListener('storage', handleUpdate);
+
+    // Fetch live homepage courses from central server database
+    fetch('/api/courses?showInIndex=true')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setCourses(json.data);
+        }
+      })
+      .catch((err) => console.warn('[FeaturedCourses] Using local fallback:', err));
+
     return () => {
       window.removeEventListener('10q_courses_updated', handleUpdate);
       window.removeEventListener('storage', handleUpdate);
