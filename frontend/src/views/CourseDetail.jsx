@@ -11,34 +11,82 @@ import { coursesData, getCourseBySlug, getStoredCourses } from '../data/courses'
 import VideoModal from '../components/VideoModal';
 
 export default function CourseDetail({ onAddToCart = () => {} }) {
-  const { slug } = useParams();
+  const params = useParams();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [openAccordion, setOpenAccordion] = useState(0);
   const [openFaq, setOpenFaq] = useState(0);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
-  const [course, setCourse] = useState(() => getCourseBySlug(slug));
+
+  // Robust slug resolution supporting params.slug and pathname fallback
+  const getParamSlug = () => {
+    if (params?.slug) return String(params.slug);
+    if (typeof window !== 'undefined') {
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      return parts[parts.length - 1] || '';
+    }
+    return '';
+  };
+
+  const [course, setCourse] = useState(null);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
+    const slug = getParamSlug();
+    const foundCourse = getCourseBySlug(slug);
+    setCourse(foundCourse);
+    setIsLoaded(true);
+
     const handleUpdate = () => {
-      setCourse(getCourseBySlug(slug));
+      const currentSlug = getParamSlug();
+      setCourse(getCourseBySlug(currentSlug));
     };
-    handleUpdate();
+
     window.addEventListener('10q_courses_updated', handleUpdate);
     window.addEventListener('storage', handleUpdate);
     return () => {
       window.removeEventListener('10q_courses_updated', handleUpdate);
       window.removeEventListener('storage', handleUpdate);
     };
-  }, [slug]);
+  }, [params?.slug]);
+
+  // Safe sanitized course properties with fallback defaults
+  const courseTitle = course?.title || 'Course Details';
+  const courseDesc = course?.description || course?.shortDescription || 'Comprehensive preparation batch crafted by toppers to maximize your exam score.';
+  const courseExam = course?.exam || 'BITSAT';
+  const courseMentor = course?.mentor || 'Harshal Jain';
+  const courseRating = course?.rating || '4.9';
+  const courseReviewsCount = Number(course?.reviewsCount || 128);
+  const courseStudentsCount = Number(course?.studentsCount || course?.enrolledStudent || 1250);
+  const courseDuration = course?.duration || '60+ Hours Live & Recorded';
+  const courseLectures = course?.lectures || '80+ Video Lectures';
+  const courseTests = course?.tests || '20+ Full Mock Tests';
+  const coursePrice = course?.price || course?.discountedPrice || '4,999';
+  const courseOriginalPrice = course?.originalPrice || '9,999';
+  const courseDiscount = course?.discount || '50% OFF';
+  const courseImage = course?.image || course?.bannerImage || '/site/assets/img/banner.png';
+  const courseTag = course?.tag || 'BEST SELLER';
+  const courseLanguage = course?.language || 'English + Hinglish';
+  const courseValidity = course?.validity || 'Valid Till Exam 2026';
 
   // SEO Document Title & Meta schema injection
   useEffect(() => {
     if (typeof document !== 'undefined' && course) {
-      document.title = course.seo?.title || `${course.title} | 10Q Challenge`;
+      document.title = course.seo?.title || `${courseTitle} | 10Q Challenge`;
     }
-  }, [course]);
+  }, [course, courseTitle]);
+
+  if (!isLoaded) {
+    return (
+      <main className="min-h-screen bg-slate-50 text-slate-900 pt-28 pb-20 flex items-center justify-center px-4">
+        <div className="flex flex-col items-center justify-center space-y-4">
+          <div className="w-12 h-12 border-4 border-amber-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-bold text-slate-600">Loading Course Details...</p>
+        </div>
+      </main>
+    );
+  }
 
   if (!course) {
     return (
@@ -62,11 +110,12 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
   }
 
   // Filter related courses (same exam or popular other batches, excluding current course)
-  const relatedCourses = coursesData
-    .filter((c) => c.id !== course.id)
+  const allAvailableCourses = typeof window !== 'undefined' ? getStoredCourses() : coursesData;
+  const relatedCourses = allAvailableCourses
+    .filter((c) => String(c.id) !== String(course.id))
     .sort((a, b) => {
-      if (a.exam === course.exam && b.exam !== course.exam) return -1;
-      if (a.exam !== course.exam && b.exam === course.exam) return 1;
+      if (a.exam === courseExam && b.exam !== courseExam) return -1;
+      if (a.exam !== courseExam && b.exam === courseExam) return 1;
       return 0;
     })
     .slice(0, 3);
@@ -84,7 +133,7 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
       navigate('/login', {
         state: {
           fromEnroll: true,
-          courseTitle: course.title,
+          courseTitle: courseTitle,
           courseId: course.id,
         },
       });
@@ -103,8 +152,8 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
   const jsonLdData = {
     '@context': 'https://schema.org',
     '@type': 'Course',
-    name: course.title,
-    description: course.description,
+    name: courseTitle,
+    description: courseDesc,
     provider: {
       '@type': 'Organization',
       name: '10Q Challenge',
@@ -112,14 +161,14 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
     },
     offers: {
       '@type': 'Offer',
-      price: course.price,
+      price: coursePrice,
       priceCurrency: 'INR',
       availability: 'https://schema.org/InStock',
     },
     aggregateRating: {
       '@type': 'AggregateRating',
-      ratingValue: course.rating,
-      reviewCount: course.reviewsCount,
+      ratingValue: courseRating,
+      reviewCount: courseReviewsCount,
       bestRating: '5',
       worstRating: '1',
     },
@@ -148,9 +197,9 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
             <span>/</span>
             <Link to="/course-all" className="hover:text-amber-400 transition-colors font-medium">Courses</Link>
             <span>/</span>
-            <Link to={`/exam/${course.exam}`} className="hover:text-amber-400 transition-colors font-medium">{course.exam}</Link>
+            <Link to={`/exam/${courseExam}`} className="hover:text-amber-400 transition-colors font-medium">{courseExam}</Link>
             <span>/</span>
-            <span className="text-amber-400 font-bold truncate max-w-xs">{course.title}</span>
+            <span className="text-amber-400 font-bold truncate max-w-xs">{courseTitle}</span>
           </nav>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
@@ -162,46 +211,46 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
               <div className="flex flex-wrap items-center gap-2.5">
                 <span className="bg-amber-400 text-slate-950 font-black text-xs px-3.5 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1.5">
                   <Flame className="w-3.5 h-3.5 fill-slate-950" />
-                  <span>{course.tag || 'BEST SELLER'}</span>
+                  <span>{courseTag}</span>
                 </span>
 
                 <span className="bg-purple-900/70 border border-purple-400/30 text-purple-200 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 backdrop-blur-sm">
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Target {course.exam} 2026</span>
+                  <span>Target {courseExam} 2026</span>
                 </span>
 
                 <span className="bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
                   <Check className="w-3.5 h-3.5" />
-                  <span>{course.language || 'English + Hinglish'}</span>
+                  <span>{courseLanguage}</span>
                 </span>
               </div>
 
               {/* Course Main Heading */}
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white leading-tight tracking-tight">
-                {course.title}
+                {courseTitle}
               </h1>
 
               {/* Course Subtitle / Description */}
               <p className="text-slate-200 text-base sm:text-lg leading-relaxed font-normal">
-                {course.description}
+                {courseDesc}
               </p>
 
               {/* Stats & Social Proof Row */}
               <div className="flex flex-wrap items-center gap-5 sm:gap-7 text-xs sm:text-sm text-purple-200/90 pt-4 pb-4 border-y border-purple-800/40">
                 <div className="flex items-center space-x-1.5">
                   <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                  <span className="font-black text-white text-base">{course.rating}</span>
-                  <span className="text-purple-300 text-xs">({course.reviewsCount.toLocaleString()} ratings)</span>
+                  <span className="font-black text-white text-base">{courseRating}</span>
+                  <span className="text-purple-300 text-xs">({courseReviewsCount.toLocaleString()} ratings)</span>
                 </div>
 
                 <div className="flex items-center space-x-1.5">
                   <UserCheck className="w-4 h-4 text-emerald-400" />
-                  <span className="font-semibold text-white">{(course.studentsCount || 12500).toLocaleString()}+ Enrolled</span>
+                  <span className="font-semibold text-white">{courseStudentsCount.toLocaleString()}+ Enrolled</span>
                 </div>
 
                 <div className="flex items-center space-x-1.5">
                   <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  <span className="font-bold text-amber-300">{course.mentor}</span>
+                  <span className="font-bold text-amber-300">{courseMentor}</span>
                 </div>
               </div>
 
@@ -212,7 +261,7 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
                     <Clock className="w-4 h-4" />
                     <span className="text-[11px] font-bold uppercase tracking-wider text-purple-200">Duration</span>
                   </div>
-                  <div className="text-sm font-black text-white">{course.duration}</div>
+                  <div className="text-sm font-black text-white">{courseDuration}</div>
                 </div>
 
                 <div className="bg-[#36277b]/60 border border-purple-700/40 rounded-2xl p-3.5 backdrop-blur-sm">
@@ -220,7 +269,7 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
                     <BookOpen className="w-4 h-4" />
                     <span className="text-[11px] font-bold uppercase tracking-wider text-purple-200">Lectures</span>
                   </div>
-                  <div className="text-sm font-black text-white">{course.lectures}</div>
+                  <div className="text-sm font-black text-white">{courseLectures}</div>
                 </div>
 
                 <div className="bg-[#36277b]/60 border border-purple-700/40 rounded-2xl p-3.5 backdrop-blur-sm col-span-2 sm:col-span-1">
@@ -228,7 +277,7 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
                     <FileText className="w-4 h-4" />
                     <span className="text-[11px] font-bold uppercase tracking-wider text-purple-200">Mock Tests</span>
                   </div>
-                  <div className="text-sm font-black text-white">{course.tests}</div>
+                  <div className="text-sm font-black text-white">{courseTests}</div>
                 </div>
               </div>
 
@@ -261,8 +310,8 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
                   title="Click to preview course video"
                 >
                   <img
-                    src={course.image}
-                    alt={course.title}
+                    src={courseImage}
+                    alt={courseTitle}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-transparent" />
@@ -280,17 +329,17 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
                   </span>
 
                   <span className="absolute top-3 right-3 bg-amber-400 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-md uppercase shadow">
-                    {course.validity || 'Valid Till Exam'}
+                    {courseValidity}
                   </span>
                 </div>
 
                 {/* Price Section */}
                 <div className="space-y-1.5 border-b border-slate-100 pb-4">
                   <div className="flex items-baseline space-x-3">
-                    <span className="text-3xl sm:text-4xl font-black text-slate-900">₹{course.price}</span>
-                    <span className="text-base sm:text-lg text-slate-400 line-through">₹{course.originalPrice}</span>
+                    <span className="text-3xl sm:text-4xl font-black text-slate-900">₹{coursePrice}</span>
+                    <span className="text-base sm:text-lg text-slate-400 line-through">₹{courseOriginalPrice}</span>
                     <span className="bg-emerald-100 text-emerald-800 font-black text-xs px-3 py-1 rounded-full border border-emerald-200">
-                      {course.discount}
+                      {courseDiscount}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200/80">
@@ -409,13 +458,13 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
               Course Overview &amp; Strategy
             </span>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              {course.overviewTitle || `Why This Course is Built Specifically for ${course.exam} 2026`}
+              {course.overviewTitle || `Why This Course is Built Specifically for ${courseExam} 2026`}
             </h2>
           </div>
 
           <div className="space-y-4 text-slate-600 leading-relaxed text-sm sm:text-base font-normal">
             {(course.overviewParagraphs || [
-              `The ${course.title} is an intensive, results-oriented program crafted by toppers from BITS Pilani and top IITs. ${course.exam} requires deep speed mastery, accurate question selection, and disciplined time allocation.`,
+              `The ${courseTitle} is an intensive, results-oriented program crafted by toppers from BITS Pilani and top IITs. ${courseExam} requires deep speed mastery, accurate question selection, and disciplined time allocation.`,
               `This comprehensive batch equips you with formula shortcuts, 10-second option elimination techniques, and full-length mock tests to maximize your score and secure your top-choice branch.`
             ]).map((p, idx) => (
               <p key={idx}>{p}</p>
@@ -454,7 +503,7 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
               </h4>
               <ul className="space-y-2.5 text-xs sm:text-sm text-slate-600">
                 {(course.targetAudience || [
-                  `Class 12th students targeting ${course.exam} 2026`,
+                  `Class 12th students targeting ${courseExam} 2026`,
                   `Dropper batch aspirants aiming to jump from 220+ to 330+ marks`,
                   "Students who want structured shortcuts & mock test error analysis"
                 ]).map((item, idx) => (
@@ -499,7 +548,7 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
               </h2>
             </div>
             <div className="text-xs text-slate-500 font-bold bg-slate-100 px-4 py-2 rounded-xl border border-slate-200 self-start sm:self-auto">
-              {course.syllabusModules ? course.syllabusModules.length : 5} Comprehensive Modules • {course.lectures}
+              {course.syllabusModules ? course.syllabusModules.length : 5} Comprehensive Modules • {courseLectures}
             </div>
           </div>
 
@@ -670,7 +719,7 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
             <div className="relative shrink-0">
               <img
                 src={course.mentorImage || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300"}
-                alt={course.mentor}
+                alt={courseMentor}
                 className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border-4 border-white shadow-md"
               />
               <span className="absolute -bottom-2 -right-2 bg-emerald-500 text-white p-1.5 rounded-full shadow">
@@ -680,7 +729,7 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
 
             <div className="space-y-2 text-center md:text-left flex-1">
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
-                <h3 className="text-xl font-black text-slate-900">{course.mentor}</h3>
+                <h3 className="text-xl font-black text-slate-900">{courseMentor}</h3>
                 <span className="bg-amber-400 text-slate-950 font-black text-[10px] uppercase px-2.5 py-0.5 rounded-full">
                   {course.mentorScore || 'Toppers Panel'}
                 </span>
@@ -710,8 +759,8 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
             </div>
             <div className="flex items-center space-x-2 bg-amber-50 border border-amber-200 px-4 py-2 rounded-2xl">
               <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
-              <span className="text-lg font-black text-slate-900">{course.rating}</span>
-              <span className="text-xs text-slate-600 font-medium">({course.reviewsCount} reviews)</span>
+              <span className="text-lg font-black text-slate-900">{courseRating}</span>
+              <span className="text-xs text-slate-600 font-medium">({courseReviewsCount} reviews)</span>
             </div>
           </div>
 
@@ -817,122 +866,135 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
         </section>
 
         {/* SECTION 7: RELATED COURSES & RECOMMENDED BATCHES */}
-        <section id="related" className="space-y-6 pt-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-1.5">
-              <span className="text-amber-800 font-black text-xs uppercase tracking-widest px-3.5 py-1 bg-amber-100 rounded-full border border-amber-200 inline-block">
-                Recommended For You
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                Related Prep Batches &amp; Test Series
-              </h2>
-            </div>
-            <Link
-              to="/course-all"
-              className="inline-flex items-center space-x-2 text-xs font-bold text-amber-700 hover:text-amber-800 self-start sm:self-auto"
-            >
-              <span>Explore All Batches</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {relatedCourses.map((rel) => (
-              <div
-                key={rel.id}
-                className="bg-white rounded-3xl overflow-hidden border border-slate-200/90 hover:border-amber-400 shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 flex flex-col justify-between group"
-              >
-                <div>
-                  {/* Clickable Image Box with Hover Zoom */}
-                  <Link
-                    to={`/course-detail/${rel.slug || rel.id}`}
-                    className="block relative h-48 sm:h-52 overflow-hidden bg-slate-100 cursor-pointer"
-                    aria-label={`View ${rel.title}`}
-                  >
-                    <img
-                      src={rel.image}
-                      alt={rel.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent" />
-                    
-                    <span className="absolute top-3.5 left-3.5 bg-amber-400 text-slate-950 font-black text-[10px] uppercase tracking-wider px-3 py-1 rounded-full shadow">
-                      {rel.tag || 'TOP RATED'}
-                    </span>
-
-                    <span className="absolute top-3.5 right-3.5 bg-slate-950/80 backdrop-blur-xs text-white text-[10px] font-bold px-2.5 py-1 rounded-lg border border-white/20">
-                      {rel.exam}
-                    </span>
-
-                    <span className="absolute bottom-3 right-3.5 bg-white/95 text-slate-900 font-bold text-xs px-2.5 py-1 rounded-lg border border-slate-200 shadow flex items-center space-x-1">
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                      <span>{rel.rating}</span>
-                      <span className="text-slate-500 text-[10px]">({rel.reviewsCount})</span>
-                    </span>
-                  </Link>
-
-                  {/* Card Content */}
-                  <div className="p-6 space-y-3.5">
-                    <div className="flex items-center space-x-2 text-xs font-semibold text-slate-600">
-                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span className="truncate">{rel.mentor}</span>
-                    </div>
-
-                    <Link to={`/course-detail/${rel.slug || rel.id}`}>
-                      <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-amber-600 transition-colors line-clamp-2 leading-snug cursor-pointer">
-                        {rel.title}
-                      </h3>
-                    </Link>
-
-                    <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed font-normal">
-                      {rel.description}
-                    </p>
-
-                    <div className="pt-2 flex items-center justify-between text-xs text-slate-600 border-t border-slate-100">
-                      <div className="flex items-center space-x-1">
-                        <Clock className="w-3.5 h-3.5 text-amber-600" />
-                        <span>{rel.duration}</span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <BookOpen className="w-3.5 h-3.5 text-amber-600" />
-                        <span>{rel.tests || rel.lectures}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card Footer with Details & Enroll CTAs */}
-                <div className="p-6 pt-0 border-t border-slate-100 mt-2 flex items-center justify-between gap-2">
-                  <div>
-                    <div className="flex items-baseline space-x-2">
-                      <span className="text-xl font-black text-slate-900">₹{rel.price}</span>
-                      <span className="text-xs text-slate-400 line-through">₹{rel.originalPrice}</span>
-                    </div>
-                    <span className="text-[10px] text-emerald-600 font-bold block">
-                      {rel.discount}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Link
-                      to={`/course-detail/${rel.slug || rel.id}`}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold text-xs rounded-xl border border-slate-200 transition-colors cursor-pointer"
-                    >
-                      View Details
-                    </Link>
-                    <Link
-                      to={`/course-detail/${rel.slug || rel.id}`}
-                      className="px-3.5 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                    >
-                      Enroll
-                    </Link>
-                  </div>
-                </div>
-
+        {relatedCourses.length > 0 && (
+          <section id="related" className="space-y-6 pt-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1.5">
+                <span className="text-amber-800 font-black text-xs uppercase tracking-widest px-3.5 py-1 bg-amber-100 rounded-full border border-amber-200 inline-block">
+                  Recommended For You
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                  Related Prep Batches &amp; Test Series
+                </h2>
               </div>
-            ))}
-          </div>
-        </section>
+              <Link
+                to="/course-all"
+                className="inline-flex items-center space-x-2 text-xs font-bold text-amber-700 hover:text-amber-800 self-start sm:self-auto"
+              >
+                <span>Explore All Batches</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {relatedCourses.map((rel) => {
+                const relImage = rel.image || rel.bannerImage || '/site/assets/img/banner.png';
+                const relPrice = rel.price || rel.discountedPrice || '4,999';
+                const relOriginalPrice = rel.originalPrice || '9,999';
+                const relDiscount = rel.discount || '50% OFF';
+                const relRating = rel.rating || '4.9';
+                const relReviews = rel.reviewsCount || '120';
+                const relDuration = rel.duration || '60+ Hours';
+                const relTests = rel.tests || rel.lectures || '50+ Lessons';
+
+                return (
+                  <div
+                    key={rel.id}
+                    className="bg-white rounded-3xl overflow-hidden border border-slate-200/90 hover:border-amber-400 shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 flex flex-col justify-between group"
+                  >
+                    <div>
+                      {/* Clickable Image Box with Hover Zoom */}
+                      <Link
+                        to={`/course-detail/${rel.slug || rel.id}`}
+                        className="block relative h-48 sm:h-52 overflow-hidden bg-slate-100 cursor-pointer"
+                        aria-label={`View ${rel.title}`}
+                      >
+                        <img
+                          src={relImage}
+                          alt={rel.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent" />
+                        
+                        <span className="absolute top-3.5 left-3.5 bg-amber-400 text-slate-950 font-black text-[10px] uppercase tracking-wider px-3 py-1 rounded-full shadow">
+                          {rel.tag || 'TOP RATED'}
+                        </span>
+
+                        <span className="absolute top-3.5 right-3.5 bg-slate-950/80 backdrop-blur-xs text-white text-[10px] font-bold px-2.5 py-1 rounded-lg border border-white/20">
+                          {rel.exam || 'BITSAT'}
+                        </span>
+
+                        <span className="absolute bottom-3 right-3.5 bg-white/95 text-slate-900 font-bold text-xs px-2.5 py-1 rounded-lg border border-slate-200 shadow flex items-center space-x-1">
+                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                          <span>{relRating}</span>
+                          <span className="text-slate-500 text-[10px]">({relReviews})</span>
+                        </span>
+                      </Link>
+
+                      {/* Card Content */}
+                      <div className="p-6 space-y-3.5">
+                        <div className="flex items-center space-x-2 text-xs font-semibold text-slate-600">
+                          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span className="truncate">{rel.mentor || 'Harshal Jain'}</span>
+                        </div>
+
+                        <Link to={`/course-detail/${rel.slug || rel.id}`}>
+                          <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-amber-600 transition-colors line-clamp-2 leading-snug cursor-pointer">
+                            {rel.title}
+                          </h3>
+                        </Link>
+
+                        <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed font-normal">
+                          {rel.description || rel.shortDescription}
+                        </p>
+
+                        <div className="pt-2 flex items-center justify-between text-xs text-slate-600 border-t border-slate-100">
+                          <div className="flex items-center space-x-1">
+                            <Clock className="w-3.5 h-3.5 text-amber-600" />
+                            <span>{relDuration}</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <BookOpen className="w-3.5 h-3.5 text-amber-600" />
+                            <span>{relTests}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Footer with Details & Enroll CTAs */}
+                    <div className="p-6 pt-0 border-t border-slate-100 mt-2 flex items-center justify-between gap-2">
+                      <div>
+                        <div className="flex items-baseline space-x-2">
+                          <span className="text-xl font-black text-slate-900">₹{relPrice}</span>
+                          <span className="text-xs text-slate-400 line-through">₹{relOriginalPrice}</span>
+                        </div>
+                        <span className="text-[10px] text-emerald-600 font-bold block">
+                          {relDiscount}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <Link
+                          to={`/course-detail/${rel.slug || rel.id}`}
+                          className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold text-xs rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                        >
+                          View Details
+                        </Link>
+                        <Link
+                          to={`/course-detail/${rel.slug || rel.id}`}
+                          className="px-3.5 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                        >
+                          Enroll
+                        </Link>
+                      </div>
+                    </div>
+
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
       </div>
 

@@ -32,15 +32,30 @@ export function saveStoredCourses(courses) {
 // Fallback empty array for static SSR evaluation
 export const coursesData = [];
 
-export const getCourseBySlug = (slug) => {
-  if (!slug) return null;
+export const getCourseBySlug = (rawSlug) => {
+  if (!rawSlug) return null;
+  const decoded = decodeURIComponent(String(rawSlug)).trim();
+  const normalized = decoded.toLowerCase();
+  const dashed = normalized.replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
   const currentCourses = getStoredCourses();
   const searchList = currentCourses.length > 0 ? currentCourses : coursesData;
+
   return (
-    searchList.find(
-      (c) =>
-        (c.slug && c.slug.toLowerCase() === String(slug).toLowerCase()) ||
-        String(c.id) === String(slug)
-    ) || null
+    searchList.find((c) => {
+      if (!c) return false;
+      const cId = String(c.id).trim();
+      const cSlug = String(c.slug || '').trim().toLowerCase();
+      const cSlugDashed = cSlug.replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const cTitleDashed = String(c.title || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+      return (
+        cId === decoded ||
+        cId === dashed ||
+        cSlug === normalized ||
+        cSlugDashed === dashed ||
+        cTitleDashed === dashed
+      );
+    }) || null
   );
 };

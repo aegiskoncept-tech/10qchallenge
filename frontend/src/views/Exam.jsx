@@ -156,15 +156,15 @@ export default function Exam() {
 
                     <span className="absolute bottom-3 right-3.5 bg-white/95 text-slate-900 font-bold text-xs px-2.5 py-1 rounded-lg border border-slate-200 shadow flex items-center space-x-1">
                       <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                      <span>{course.rating}</span>
-                      <span className="text-slate-500 text-[10px]">({course.reviewsCount})</span>
+                      <span>{course.rating || '4.9'}</span>
+                      <span className="text-slate-500 text-[10px]">({course.reviewsCount || '120'})</span>
                     </span>
                   </Link>
 
                   <div className="p-6 space-y-3.5">
                     <div className="flex items-center space-x-2 text-xs font-semibold text-slate-600">
                       <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span className="truncate">{course.mentor}</span>
+                      <span className="truncate">{course.mentor || 'Harshal Jain'}</span>
                     </div>
 
                     <Link to={`/course-detail/${course.slug || course.id}`}>
@@ -174,17 +174,17 @@ export default function Exam() {
                     </Link>
 
                     <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed font-normal">
-                      {course.description}
+                      {course.description || course.shortDescription}
                     </p>
 
                     <div className="pt-2 flex items-center justify-between text-xs text-slate-600 border-t border-slate-100">
                       <div className="flex items-center space-x-1">
                         <Clock className="w-3.5 h-3.5 text-amber-600" />
-                        <span>{course.duration}</span>
+                        <span>{course.duration || '60+ Hours'}</span>
                       </div>
                       <div className="flex items-center space-x-1">
                         <BookOpen className="w-3.5 h-3.5 text-amber-600" />
-                        <span>{course.lectures || course.tests}</span>
+                        <span>{course.lectures || course.tests || '50+ Lessons'}</span>
                       </div>
                     </div>
                   </div>
@@ -193,11 +193,11 @@ export default function Exam() {
                 <div className="p-6 pt-0 border-t border-slate-100 mt-2 flex items-center justify-between gap-2">
                   <div>
                     <div className="flex items-baseline space-x-2">
-                      <span className="text-2xl font-black text-slate-900">₹{course.price}</span>
-                      <span className="text-xs text-slate-400 line-through">₹{course.originalPrice}</span>
+                      <span className="text-2xl font-black text-slate-900">₹{course.price || course.discountedPrice || '4,999'}</span>
+                      <span className="text-xs text-slate-400 line-through">₹{course.originalPrice || '9,999'}</span>
                     </div>
                     <span className="text-[10px] text-emerald-600 font-bold block mt-0.5">
-                      {course.discount}
+                      {course.discount || '50% OFF'}
                     </span>
                   </div>
 

@@ -464,9 +464,23 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
 
     const autoSlug = courseForm.slug || courseForm.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const priceFormatted = courseForm.discountedPrice || courseForm.originalPrice || '4999';
+    const origPriceFormatted = courseForm.originalPrice || (parseInt(priceFormatted) * 2).toString();
+    const discountFormatted = courseForm.discount || '50% OFF';
 
     if (courseForm.id) {
-      setCourseList(courseList.map(c => c.id === courseForm.id ? { ...courseForm, slug: autoSlug, price: priceFormatted } : c));
+      setCourseList(courseList.map(c => c.id === courseForm.id ? {
+        ...courseForm,
+        slug: autoSlug,
+        price: priceFormatted,
+        originalPrice: origPriceFormatted,
+        discount: discountFormatted,
+        rating: courseForm.rating || '4.9',
+        reviewsCount: courseForm.reviewsCount || 128,
+        studentsCount: courseForm.enrolledStudent || 1250,
+        duration: courseForm.duration || '60+ Hours',
+        lectures: courseForm.lectures || '80+ Lectures',
+        tests: courseForm.tests || '20+ Mock Tests'
+      } : c));
     } else {
       const newId = courseList.length ? Math.max(...courseList.map(c => c.id)) + 1 : 1;
       const newCourse = {
@@ -474,6 +488,15 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
         id: newId,
         slug: autoSlug,
         price: priceFormatted,
+        originalPrice: origPriceFormatted,
+        discount: discountFormatted,
+        rating: courseForm.rating || '4.9',
+        reviewsCount: courseForm.reviewsCount || 128,
+        studentsCount: courseForm.enrolledStudent || 1250,
+        duration: courseForm.duration || '60+ Hours',
+        lectures: courseForm.lectures || '80+ Lectures',
+        tests: courseForm.tests || '20+ Mock Tests',
+        tag: courseForm.tag || 'NEW BATCH',
         image: courseForm.image || bannerBitSat2026Master,
         bannerImage: courseForm.bannerImage || bannerBitSat2026Master
       };
