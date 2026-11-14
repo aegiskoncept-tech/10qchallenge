@@ -2,11 +2,29 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from '@/src/compat/router';
 import { Clock, FileText, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
-import { coursesData } from '../data/courses';
+import { coursesData, getStoredCourses } from '../data/courses';
 
 export default function HeroSlider() {
   const navigate = useNavigate();
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+  const [featuredCourse, setFeaturedCourse] = useState(() => {
+    const stored = getStoredCourses();
+    return stored[0] || coursesData[0] || null;
+  });
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      const stored = getStoredCourses();
+      setFeaturedCourse(stored[0] || coursesData[0] || null);
+    };
+    handleUpdate();
+    window.addEventListener('10q_courses_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('10q_courses_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
 
   const banners = [
     { id: 1, image: "/site/assets/img/banner.png", alt: "VITEEE 2026 Crash Course" },
@@ -21,8 +39,6 @@ export default function HeroSlider() {
     }, 5000);
     return () => clearInterval(timer);
   }, [banners.length]);
-
-  const featuredCourse = coursesData[0] || null;
 
   return (
     <section className="relative bg-[#2b1f63] text-white pt-24 pb-16 lg:pt-28 lg:pb-20 overflow-hidden">

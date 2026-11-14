@@ -1,17 +1,36 @@
 'use client';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from '@/src/compat/router';
 import { BookOpen, CheckCircle, Clock, Award, ShieldCheck, ArrowRight, Star, Flame } from 'lucide-react';
 import { examsData } from '../data/exams';
-import { coursesData } from '../data/courses';
+import { coursesData, getStoredCourses } from '../data/courses';
 
 export default function Exam() {
   const params = useParams();
   const rawName = params.examName || params.slug || 'BITSAT';
   const examKey = Object.keys(examsData).find(k => k.toLowerCase() === rawName.toLowerCase()) || 'BITSAT';
   const exam = examsData[examKey] || examsData.BITSAT;
-  const relatedCourses = coursesData.filter(
-    (c) => c.exam.toLowerCase() === rawName.toLowerCase() || c.exam === 'BITSAT'
+  const [courses, setCourses] = useState(() => {
+    const stored = getStoredCourses();
+    return stored.length > 0 ? stored : coursesData;
+  });
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      const stored = getStoredCourses();
+      setCourses(stored.length > 0 ? stored : coursesData);
+    };
+    handleUpdate();
+    window.addEventListener('10q_courses_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('10q_courses_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
+  const relatedCourses = courses.filter(
+    (c) => (c.exam && c.exam.toLowerCase() === rawName.toLowerCase()) || c.exam === 'BITSAT'
   );
 
   return (

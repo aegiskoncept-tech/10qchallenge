@@ -1,15 +1,33 @@
 'use client';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from '@/src/compat/router';
 import { CheckCircle2, FileText, ArrowRight } from 'lucide-react';
-import { coursesData } from '../data/courses';
+import { coursesData, getStoredCourses } from '../data/courses';
 
 export default function TestSeries() {
   const params = useParams();
   const rawExam = params.examName || params.slug || 'All';
   const targetExam = rawExam === 'All' ? 'All' : rawExam.toUpperCase();
+  const [courses, setCourses] = useState(() => {
+    const stored = getStoredCourses();
+    return stored.length > 0 ? stored : coursesData;
+  });
 
-  const testPackages = coursesData.filter((c) => {
+  useEffect(() => {
+    const handleUpdate = () => {
+      const stored = getStoredCourses();
+      setCourses(stored.length > 0 ? stored : coursesData);
+    };
+    handleUpdate();
+    window.addEventListener('10q_courses_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('10q_courses_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
+  const testPackages = courses.filter((c) => {
     const isTestSeries =
       c.category === 'TEST_SERIES' ||
       c.isShowInTestSeries ||

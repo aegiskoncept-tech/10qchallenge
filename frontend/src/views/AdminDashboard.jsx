@@ -60,7 +60,7 @@ import {
   Layers
 } from 'lucide-react';
 import CourseContentAssignmentView from '@/components/admin/CourseContentAssignment';
-import { coursesData as initialCourses } from '../data/courses';
+import { coursesData as initialCourses, getStoredCourses, saveStoredCourses } from '../data/courses';
 import { blogsData as initialBlogs } from '../data/blogs';
 import { MASTER_QUESTION_BANK, SUBJECT_MASTER_LIST, CHAPTER_MASTER_LIST } from '../data/questionBank';
 
@@ -419,7 +419,12 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
 
   // 7. COURSE MASTER STATE
   const [courseActiveTab, setCourseActiveTab] = useState('Table'); // 'Basic Information' or 'Table'
-  const [courseList, setCourseList] = useState([]);
+  const [courseList, setCourseList] = useState(() => getStoredCourses());
+
+  // Keep persistent storage updated whenever courseList changes
+  useEffect(() => {
+    saveStoredCourses(courseList);
+  }, [courseList]);
 
   const defaultCourseForm = {
     id: null,

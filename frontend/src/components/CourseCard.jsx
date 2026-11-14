@@ -1,10 +1,29 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from '@/src/compat/router';
 import { Star, Clock, BookOpen, ArrowRight, ShieldCheck, Flame } from 'lucide-react';
-import { coursesData } from '../data/courses';
+import { coursesData, getStoredCourses } from '../data/courses';
 
 export default function FeaturedCoursesSection({ limit = 6 }) {
-  const displayedCourses = coursesData.slice(0, limit);
+  const [courses, setCourses] = useState(() => {
+    const stored = getStoredCourses();
+    return stored.length > 0 ? stored : coursesData;
+  });
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      const stored = getStoredCourses();
+      setCourses(stored.length > 0 ? stored : coursesData);
+    };
+    handleUpdate();
+    window.addEventListener('10q_courses_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('10q_courses_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
+  const displayedCourses = courses.slice(0, limit);
 
   return (
     <section className="py-20 bg-slate-50 text-slate-900 relative border-b border-slate-200 selection:bg-amber-400 selection:text-slate-950">

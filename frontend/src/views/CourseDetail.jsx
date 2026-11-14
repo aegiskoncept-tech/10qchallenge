@@ -7,7 +7,7 @@ import {
   Sparkles, FileText, Zap, HelpCircle, Check, Users,
   Share2, Flame, MonitorPlay
 } from 'lucide-react';
-import { coursesData, getCourseBySlug } from '../data/courses';
+import { coursesData, getCourseBySlug, getStoredCourses } from '../data/courses';
 import VideoModal from '../components/VideoModal';
 
 export default function CourseDetail({ onAddToCart = () => {} }) {
@@ -18,9 +18,20 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
   const [openFaq, setOpenFaq] = useState(0);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [course, setCourse] = useState(() => getCourseBySlug(slug));
 
-  // Retrieve course by slug or ID
-  const course = getCourseBySlug(slug);
+  useEffect(() => {
+    const handleUpdate = () => {
+      setCourse(getCourseBySlug(slug));
+    };
+    handleUpdate();
+    window.addEventListener('10q_courses_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('10q_courses_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, [slug]);
 
   // SEO Document Title & Meta schema injection
   useEffect(() => {

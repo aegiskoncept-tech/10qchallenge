@@ -2,15 +2,28 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from '@/src/compat/router';
 import { Search, Star, Clock, BookOpen, ShieldCheck, ArrowRight, Sparkles, Filter, Flame } from 'lucide-react';
-import { coursesData as initialCourses } from '../data/courses';
+import { coursesData as initialCourses, getStoredCourses } from '../data/courses';
 import { apiGetCourses } from '../services/api';
 
 export default function CourseAll() {
-  const [courses, setCourses] = useState(initialCourses);
+  const [courses, setCourses] = useState(() => {
+    const stored = getStoredCourses();
+    return stored.length > 0 ? stored : initialCourses;
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedExam, setSelectedExam] = useState('All');
 
   useEffect(() => {
+    const handleUpdate = () => {
+      const stored = getStoredCourses();
+      if (stored.length > 0) {
+        setCourses(stored);
+      }
+    };
+    handleUpdate();
+    window.addEventListener('10q_courses_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
     apiGetCourses()
       .then((res) => {
         if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
@@ -20,6 +33,11 @@ export default function CourseAll() {
       .catch((err) => {
         console.log('Using local courses fallback:', err);
       });
+
+    return () => {
+      window.removeEventListener('10q_courses_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, []);
 
   const exams = ['All', 'BITSAT', 'JEE', 'VITEEE', 'MET', 'Comedk', 'Mentorship'];
