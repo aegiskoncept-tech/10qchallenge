@@ -25,11 +25,12 @@ export default function Exam() {
     window.addEventListener('storage', handleUpdate);
 
     // Fetch live exam courses from server database
-    fetch(`/api/courses?exam=${encodeURIComponent(rawName)}`)
+    fetch(`/api/courses?exam=${encodeURIComponent(rawName)}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((json) => {
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        if (json.success && Array.isArray(json.data)) {
           setCourses(json.data);
+          saveStoredCourses(json.data);
         }
       })
       .catch((err) => console.warn('[Exam View] Using cached courses fallback:', err));

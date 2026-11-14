@@ -1,3 +1,4 @@
+'use client';
 import React, { useState, useEffect } from 'react';
 import { Link } from '@/src/compat/router';
 import { Star, Clock, BookOpen, ArrowRight, ShieldCheck, Flame } from 'lucide-react';
@@ -7,6 +8,10 @@ export default function FeaturedCoursesSection({ limit = 6 }) {
   const [courses, setCourses] = useState(() => {
     const stored = getStoredCourses();
     return stored.length > 0 ? stored : coursesData;
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    const stored = getStoredCourses();
+    return stored.length === 0;
   });
 
   useEffect(() => {
@@ -19,14 +24,18 @@ export default function FeaturedCoursesSection({ limit = 6 }) {
     window.addEventListener('storage', handleUpdate);
 
     // Fetch live homepage courses from central server database
-    fetch('/api/courses?showInIndex=true')
+    fetch('/api/courses?showInIndex=true', { cache: 'no-store' })
       .then((res) => res.json())
       .then((json) => {
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        if (json.success && Array.isArray(json.data)) {
           setCourses(json.data);
+          saveStoredCourses(json.data);
         }
       })
-      .catch((err) => console.warn('[FeaturedCourses] Using local fallback:', err));
+      .catch((err) => console.warn('[FeaturedCourses] Using local fallback:', err))
+      .finally(() => {
+        setIsLoading(false);
+      });
 
     return () => {
       window.removeEventListener('10q_courses_updated', handleUpdate);
@@ -61,7 +70,21 @@ export default function FeaturedCoursesSection({ limit = 6 }) {
         </div>
 
         {/* Course Cards Grid */}
-        {displayedCourses.length === 0 ? (
+        {isLoading && displayedCourses.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white rounded-3xl overflow-hidden border border-slate-200 animate-pulse shadow-sm">
+                <div className="h-52 bg-slate-200" />
+                <div className="p-6 space-y-4">
+                  <div className="h-4 bg-slate-200 rounded w-1/3" />
+                  <div className="h-6 bg-slate-200 rounded w-3/4" />
+                  <div className="h-3 bg-slate-200 rounded w-full" />
+                  <div className="h-10 bg-slate-100 rounded-xl mt-4" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : displayedCourses.length === 0 ? (
           <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center max-w-lg mx-auto shadow-xs space-y-3">
             <BookOpen className="w-10 h-10 text-amber-500 mx-auto" />
             <h3 className="text-lg font-extrabold text-slate-900">No Courses Available Yet</h3>

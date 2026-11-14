@@ -12,6 +12,10 @@ export default function TestSeries() {
     const stored = getStoredCourses();
     return stored.length > 0 ? stored : coursesData;
   });
+  const [isLoading, setIsLoading] = useState(() => {
+    const stored = getStoredCourses();
+    return stored.length === 0;
+  });
 
   useEffect(() => {
     const handleUpdate = () => {
@@ -21,6 +25,19 @@ export default function TestSeries() {
     handleUpdate();
     window.addEventListener('10q_courses_updated', handleUpdate);
     window.addEventListener('storage', handleUpdate);
+
+    // Fetch authoritative test series courses from server
+    fetch('/api/courses?testSeries=true', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data)) {
+          setCourses(json.data);
+          saveStoredCourses(json.data);
+        }
+      })
+      .catch((err) => console.warn('[TestSeries View] Fetch error:', err))
+      .finally(() => setIsLoading(false));
+
     return () => {
       window.removeEventListener('10q_courses_updated', handleUpdate);
       window.removeEventListener('storage', handleUpdate);

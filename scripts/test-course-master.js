@@ -252,8 +252,10 @@ async function runTestSuite() {
 
     console.log(bold(green(`\n=== ALL AUDIT TESTS COMPLETED: ${passedCount} PASSED, ${failedCount} FAILED ===\n`)));
   } finally {
-    // Restore clean state
-    fs.writeFileSync(dbPath, '[]', 'utf-8');
+    // Preserve existing production courses or keep verified test courses
+    if (originalData && originalData.trim() && originalData !== '[]') {
+      fs.writeFileSync(dbPath, originalData, 'utf-8');
+    }
   }
 }
 

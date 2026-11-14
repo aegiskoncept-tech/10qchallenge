@@ -42,7 +42,7 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
 
     // Also fetch from central server database to ensure fresh data across all admins/devices
     if (slug) {
-      fetch(`/api/courses/${encodeURIComponent(slug)}`)
+      fetch(`/api/courses/${encodeURIComponent(slug)}`, { cache: 'no-store' })
         .then((res) => res.json())
         .then((json) => {
           if (json.success && json.data) {
@@ -55,6 +55,18 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
         .finally(() => {
           setIsLoaded(true);
         });
+
+      // Background fetch all courses if local cache is empty to populate related courses
+      if (getStoredCourses().length === 0) {
+        fetch('/api/courses', { cache: 'no-store' })
+          .then((res) => res.json())
+          .then((json) => {
+            if (json.success && Array.isArray(json.data)) {
+              saveStoredCourses(json.data);
+            }
+          })
+          .catch(() => {});
+      }
     } else {
       setIsLoaded(true);
     }

@@ -10,6 +10,10 @@ export default function CourseAll() {
     const stored = getStoredCourses();
     return stored.length > 0 ? stored : initialCourses;
   });
+  const [isLoading, setIsLoading] = useState(() => {
+    const stored = getStoredCourses();
+    return stored.length === 0;
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedExam, setSelectedExam] = useState('All');
 
@@ -24,14 +28,30 @@ export default function CourseAll() {
     window.addEventListener('10q_courses_updated', handleUpdate);
     window.addEventListener('storage', handleUpdate);
 
-    apiGetCourses()
-      .then((res) => {
-        if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-          setCourses(res.data);
+    // Direct authoritative public courses fetch (cross-browser / incognito resilient)
+    fetch('/api/courses', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data)) {
+          setCourses(json.data);
+          saveStoredCourses(json.data);
         }
       })
-      .catch((err) => {
-        console.log('Using local courses fallback:', err);
+      .catch(() => {
+        // Fallback to legacy mastercourse API if /api/courses fails
+        apiGetCourses()
+          .then((res) => {
+            if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+              setCourses(res.data);
+              saveStoredCourses(res.data);
+            }
+          })
+          .catch((err) => {
+            console.log('Using local courses fallback:', err);
+          });
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
 
     return () => {
@@ -112,7 +132,22 @@ export default function CourseAll() {
       {/* Course Cards Grid */}
       <section className="py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {filteredCourses.length === 0 ? (
+          {isLoading && courses.length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="bg-white rounded-3xl overflow-hidden border border-slate-200 animate-pulse shadow-sm">
+                  <div className="h-52 bg-slate-200" />
+                  <div className="p-6 space-y-4">
+                    <div className="h-4 bg-slate-200 rounded w-1/3" />
+                    <div className="h-6 bg-slate-200 rounded w-3/4" />
+                    <div className="h-3 bg-slate-200 rounded w-full" />
+                    <div className="h-3 bg-slate-200 rounded w-2/3" />
+                    <div className="h-10 bg-slate-100 rounded-xl mt-4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredCourses.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-3xl border border-slate-200 max-w-md mx-auto p-8 space-y-3 shadow-sm">
               <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
                 <Search className="w-6 h-6" />

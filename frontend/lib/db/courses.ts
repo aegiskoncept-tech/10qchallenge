@@ -67,17 +67,22 @@ export interface CourseRecord {
 
 // Find primary and secondary file paths for storage synchronization
 function getDataPaths(): string[] {
-  const possiblePaths = [
-    path.join(process.cwd(), 'data', 'courses.json'),
-    path.join(process.cwd(), '..', 'data', 'courses.json'),
-    path.join(process.cwd(), 'frontend', 'data', 'courses.json'),
+  const cwd = process.cwd();
+  const candidates = [
+    path.join(cwd, 'data', 'courses.json'),
+    path.join(cwd, 'frontend', 'data', 'courses.json'),
+    path.join(cwd, '..', 'data', 'courses.json'),
   ];
 
   const uniqueDirs = new Set<string>();
   const validPaths: string[] = [];
 
-  for (const p of possiblePaths) {
+  for (const p of candidates) {
     const dir = path.dirname(p);
+    // Don't create data folders at the root of drive like D:\data
+    if (dir === 'D:\\' || dir === 'C:\\' || dir === '/' || dir === '\\') {
+      continue;
+    }
     if (!uniqueDirs.has(dir)) {
       uniqueDirs.add(dir);
       try {
@@ -88,15 +93,20 @@ function getDataPaths(): string[] {
       } catch (err) {
         // directory creation fallback
       }
+    } else {
+      validPaths.push(p);
     }
   }
 
-  return validPaths.length > 0 ? validPaths : [path.join(process.cwd(), 'data', 'courses.json')];
+  return validPaths.length > 0 ? validPaths : [path.join(cwd, 'data', 'courses.json')];
 }
 
-// Read courses from disk with safe caching & parsing
+// Read courses from disk with safe caching, multi-path fallback & auto-synchronization
 export function readCoursesFromDb(): CourseRecord[] {
   const paths = getDataPaths();
+  let candidateWithData: { path: string; data: CourseRecord[] } | null = null;
+  let emptyPaths: string[] = [];
+
   for (const filePath of paths) {
     try {
       if (fs.existsSync(filePath)) {
@@ -104,14 +114,36 @@ export function readCoursesFromDb(): CourseRecord[] {
         if (raw.trim()) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
-            return parsed;
+            if (parsed.length > 0) {
+              candidateWithData = { path: filePath, data: parsed };
+              break;
+            } else {
+              emptyPaths.push(filePath);
+            }
           }
         }
+      } else {
+        emptyPaths.push(filePath);
       }
     } catch (err) {
       console.error(`[DB Error] Reading courses from ${filePath}:`, err);
     }
   }
+
+  // If one store has data while another was empty, synchronize the other immediately
+  if (candidateWithData) {
+    for (const emptyPath of emptyPaths) {
+      try {
+        const dir = path.dirname(emptyPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(emptyPath, JSON.stringify(candidateWithData.data, null, 2), 'utf-8');
+      } catch {
+        // silent sync fallback
+      }
+    }
+    return candidateWithData.data;
+  }
+
   return [];
 }
 
@@ -279,11 +311,12 @@ export function isSlugTaken(slug: string, excludeId?: number): boolean {
 }
 
 // Create new course
-export function createCourse(data: Partial<CourseRecord>, user = 'Admin'): { success: boolean; course?: CourseRecord; error?: string } {
+export function createCourse(data: Partial<CourseRecord> & Record<string, any>, user = 'Admin'): { success: boolean; course?: CourseRecord; error?: string } {
   if (!data.title?.trim()) {
     return { success: false, error: 'Course title is required.' };
   }
-  if (!data.exam?.trim()) {
+  const examVal = (data.exam || data.examTag || 'BITSAT').trim();
+  if (!examVal) {
     return { success: false, error: 'Exam category is required.' };
   }
 
@@ -296,26 +329,33 @@ export function createCourse(data: Partial<CourseRecord>, user = 'Admin'): { suc
   const newId = all.length > 0 ? Math.max(...all.map((c) => Number(c.id) || 0)) + 1 : 1;
   const now = new Date().toISOString();
 
-  const priceVal = data.discountedPrice || data.originalPrice || '4999';
+  const priceVal = data.discountedPrice || data.discountPrice || data.price || data.originalPrice || '4999';
   const origPriceVal = data.originalPrice || priceVal;
   const discountVal = data.discount || computeDiscountString(origPriceVal, priceVal);
 
-  const newCourse: CourseRecord = {
+  const imageVal = data.image || data.thumbnailUrl || '/site/assets/img/banner.png';
+  const bannerVal = data.bannerImage || data.bannerUrl || imageVal;
+
+  const newCourse: CourseRecord & Record<string, any> = {
     id: newId,
     title: data.title.trim(),
-    shortDescription: data.shortDescription?.trim() || '',
-    description: data.description?.trim() || '',
-    exam: data.exam.trim(),
+    shortDescription: data.shortDescription?.trim() || data.description?.trim() || '',
+    description: data.description?.trim() || data.shortDescription?.trim() || '',
+    exam: examVal,
+    examTag: examVal,
     originalPrice: origPriceVal,
     discountedPrice: priceVal,
+    discountPrice: Number(priceVal) || 4999,
     price: priceVal,
     discount: discountVal,
     expiryDate: data.expiryDate || '',
     enrolledStudent: data.enrolledStudent || '1250',
     displayIndex: data.displayIndex || '1',
     additionalDetails: data.additionalDetails?.trim() || '',
-    image: data.image || '/site/assets/img/banner.png',
-    bannerImage: data.bannerImage || data.image || '/site/assets/img/banner.png',
+    image: imageVal,
+    thumbnailUrl: imageVal,
+    bannerImage: bannerVal,
+    bannerUrl: bannerVal,
     altCourseImage: data.altCourseImage?.trim() || data.title.trim(),
     altBannerImage: data.altBannerImage?.trim() || data.title.trim(),
     scheduleFile: data.scheduleFile?.trim() || '',
@@ -328,8 +368,8 @@ export function createCourse(data: Partial<CourseRecord>, user = 'Admin'): { suc
     isShowInMentorship: Boolean(data.isShowInMentorship),
     isShowInTestSeries: Boolean(data.isShowInTestSeries),
     rating: data.rating || 4.9,
-    reviewsCount: Number(data.reviewsCount) || 128,
-    studentsCount: Number(data.enrolledStudent) || 1250,
+    reviewsCount: Number(data.reviewsCount || data.reviewCount) || 128,
+    studentsCount: Number(data.enrolledStudent || data.enrolledCount) || 1250,
     duration: data.duration || '60+ Hours Live & Recorded',
     lectures: data.lectures || '80+ Lectures',
     tests: data.tests || '20+ Mock Tests',
@@ -337,6 +377,9 @@ export function createCourse(data: Partial<CourseRecord>, user = 'Admin'): { suc
     language: data.language || 'English + Hinglish',
     validity: data.validity || 'Valid Till Exam 2026',
     mentor: data.mentor || 'Harshal Jain',
+    features: Array.isArray(data.features) ? data.features : ['Live Demo Access', 'Formula PDF Notes', '24/7 Doubt Resolution'],
+    subjects: Array.isArray(data.subjects) ? data.subjects : [],
+    chapters: Array.isArray(data.chapters) ? data.chapters : [],
     createdBy: user,
     updatedBy: user,
     createdAt: now,
@@ -350,7 +393,7 @@ export function createCourse(data: Partial<CourseRecord>, user = 'Admin'): { suc
 }
 
 // Update existing course
-export function updateCourse(id: number, data: Partial<CourseRecord>, user = 'Admin'): { success: boolean; course?: CourseRecord; error?: string } {
+export function updateCourse(id: number, data: Partial<CourseRecord> & Record<string, any>, user = 'Admin'): { success: boolean; course?: CourseRecord; error?: string } {
   const all = readCoursesFromDb();
   const index = all.findIndex((c) => Number(c.id) === Number(id));
 
@@ -358,27 +401,38 @@ export function updateCourse(id: number, data: Partial<CourseRecord>, user = 'Ad
     return { success: false, error: `Course with ID ${id} not found.` };
   }
 
-  const existing = all[index];
+  const existing = all[index] as any;
   const newSlug = data.slug ? toSlug(data.slug) : existing.slug;
 
   if (newSlug !== existing.slug && isSlugTaken(newSlug, id)) {
     return { success: false, error: `The slug '${newSlug}' is already in use by another course.` };
   }
 
-  const priceVal = data.discountedPrice || data.price || existing.discountedPrice || existing.price;
+  const priceVal = data.discountedPrice || data.discountPrice || data.price || existing.discountedPrice || existing.price;
   const origPriceVal = data.originalPrice || existing.originalPrice || priceVal;
   const discountVal = data.discount || computeDiscountString(origPriceVal, priceVal);
 
-  const updated: CourseRecord = {
+  const examVal = (data.exam || data.examTag || existing.exam || existing.examTag || 'BITSAT').trim();
+  const imageVal = data.image || data.thumbnailUrl || existing.image || existing.thumbnailUrl;
+  const bannerVal = data.bannerImage || data.bannerUrl || data.image || existing.bannerImage || existing.bannerUrl || imageVal;
+
+  const updated: CourseRecord & Record<string, any> = {
     ...existing,
     ...data,
     id: existing.id,
     title: data.title !== undefined ? data.title.trim() : existing.title,
     slug: newSlug,
+    exam: examVal,
+    examTag: examVal,
     price: priceVal,
     discountedPrice: priceVal,
+    discountPrice: Number(priceVal) || 4999,
     originalPrice: origPriceVal,
     discount: discountVal,
+    image: imageVal,
+    thumbnailUrl: imageVal,
+    bannerImage: bannerVal,
+    bannerUrl: bannerVal,
     updatedBy: user,
     updatedAt: new Date().toISOString(),
   };

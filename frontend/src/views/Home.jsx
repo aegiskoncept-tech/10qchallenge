@@ -1,3 +1,4 @@
+'use client';
 import React from 'react';
 import HeroSlider from '../components/HeroSlider';
 import FeatureSection from '../components/FeatureCard';

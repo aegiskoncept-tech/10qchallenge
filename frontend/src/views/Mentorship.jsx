@@ -11,18 +11,34 @@ export default function Mentorship() {
   const params = useParams();
   const rawExam = params.examName || params.slug || 'All';
   const [selectedExam, setSelectedExam] = useState(rawExam === 'All' ? 'All' : rawExam.toUpperCase());
+  const [courses, setCourses] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const examsList = ['All', 'BITSAT', 'JEE', 'VITEEE', 'MET', 'Comedk'];
 
-  const filteredPlans = mentorshipData.filter((plan) => {
+  useEffect(() => {
+    fetch('/api/courses?mentorship=true', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data)) {
+          setCourses(json.data);
+        }
+      })
+      .catch((err) => console.warn('[Mentorship View] Fetch fallback:', err))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  const allPlans = [...courses, ...mentorshipData];
+
+  const filteredPlans = allPlans.filter((plan) => {
     if (selectedExam === 'All') return true;
     return (
-      plan.exam.toLowerCase() === selectedExam.toLowerCase() ||
-      plan.title.toLowerCase().includes(selectedExam.toLowerCase())
+      (plan.exam && plan.exam.toLowerCase() === selectedExam.toLowerCase()) ||
+      (plan.title && plan.title.toLowerCase().includes(selectedExam.toLowerCase()))
     );
   });
 
-  const displayPlans = filteredPlans.length > 0 ? filteredPlans : mentorshipData;
+  const displayPlans = filteredPlans;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900 pt-24 pb-20 selection:bg-amber-400 selection:text-slate-950">
