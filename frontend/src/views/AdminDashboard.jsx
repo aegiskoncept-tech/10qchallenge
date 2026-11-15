@@ -60,6 +60,10 @@ import {
   Layers
 } from 'lucide-react';
 import CourseContentAssignmentView from '@/components/admin/CourseContentAssignment';
+import { AdminShell } from '@/components/admin/AdminShell';
+import { DashboardOverview } from '@/components/admin/DashboardOverview';
+import { CourseMasterEntry } from '@/components/admin/CourseMasterEntry';
+import { ModuleShellView } from '@/components/admin/ModuleShellView';
 import { coursesData as initialCourses, getStoredCourses, saveStoredCourses, fetchAdminCourses, apiCreateCourse, apiUpdateCourse, apiDeleteCourse, apiUploadFile } from '../data/courses';
 import { getStoredExams, saveStoredExams, fetchAdminExams, fetchServerExams, apiCreateExam, apiUpdateExam, apiDeleteExam } from '../data/exams';
 import { getStoredSubjects, saveStoredSubjects, fetchAdminSubjects, fetchServerSubjects, apiCreateSubject, apiUpdateSubject, apiDeleteSubject, fetchCourseSubjects, apiAssignCourseSubjects } from '../data/subjects';
@@ -1497,581 +1501,48 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
   };
 
   const [globalAdminSearch, setGlobalAdminSearch] = useState('');
-  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
-
-  const menuGroups = [
-    {
-      title: 'OVERVIEW',
-      items: [
-        { name: 'Dashboard', icon: LayoutGrid, badge: 'Live', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
-      ]
-    },
-    {
-      title: 'PRODUCT CATALOG',
-      items: [
-        { name: 'Course Master', icon: BookOpen, count: courseList.length },
-        { name: 'Course Content Assignment', icon: Layers, badge: 'Hub', badgeColor: 'bg-amber-100 text-amber-800 border-amber-300' },
-        { name: 'Exam Master', icon: GraduationCap, count: examList.length },
-        { name: 'Subject Master', icon: ClipboardList, count: subjectList.length },
-        {
-          name: 'Chapter Management',
-          icon: BookMarked,
-          hasSub: true,
-          subItems: [
-            { name: 'Chapter Master' },
-            { name: 'Chapter Topic Master' }
-          ]
-        }
-      ]
-    },
-    {
-      title: 'CONTENT & TESTS',
-      items: [
-        {
-          name: 'Question Management',
-          icon: HelpCircle,
-          hasSub: true,
-          subItems: [
-            { name: 'Objective Question' },
-            { name: 'Numerical Question' }
-          ]
-        },
-        { name: 'Video Master', icon: Video, count: videoList.length },
-        { name: 'Document Master', icon: FileText, count: docList.length },
-        { name: 'Test Series Master', icon: FileCheck },
-        { name: 'Live Session Management', icon: Video }
-      ]
-    },
-    {
-      title: 'STUDENTS & CRM',
-      items: [
-        {
-          name: 'Student Doubt',
-          icon: MessageSquare,
-          badge: doubtList.filter(d => d.status === 'Pending').length ? `${doubtList.filter(d => d.status === 'Pending').length} Pending` : null,
-          badgeColor: 'bg-amber-100 text-amber-800'
-        },
-        { name: 'Student Attempted Test', icon: FileCheck, count: attemptedTestList.length },
-        { name: 'Student Invoices', icon: Receipt, count: invoiceList.length }
-      ]
-    },
-    {
-      title: 'MARKETING & SEO',
-      items: [
-        { name: 'Coupon', icon: Ticket, count: couponList.length },
-        { name: 'Blog Master', icon: Edit3, count: blogList.length },
-        { name: 'SEO Page', icon: Globe, count: seoList.length },
-        {
-          name: 'Notification',
-          icon: Bell,
-          hasSub: true,
-          subItems: [
-            { name: 'Site Notification' },
-            { name: 'Student Notification' }
-          ]
-        }
-      ]
-    }
-  ];
+  const dynamicCounts = {
+    'Exam Master': examList.length,
+    'Course Master': courseList.length,
+    'Subject Master': subjectList.length,
+    'Objective Question': objectiveQuestionList.length,
+    'Numerical Question': numericalQuestionList.length,
+    'Video Master': videoList.length,
+    'Document Master': docList.length,
+    'Coupon': couponList.length,
+    'Blog Master': blogList.length,
+    'SEO Page': seoList.length,
+    'Student Doubt': doubtList.length,
+    'Student Attempted Test': attemptedTestList.length,
+    'Student Invoices': invoiceList.length
+  };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col font-sans selection:bg-amber-100 selection:text-amber-900">
-      
-      {/* SHOPIFY-STYLE TOP GLOBAL NAVBAR */}
-      <header className="bg-white border-b border-slate-200/80 h-16 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-50 shadow-xs backdrop-blur-md bg-white/95">
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all"
-            title="Toggle Navigation Sidebar"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-
-          <Link to="/" className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-slate-950 via-slate-900 to-indigo-950 flex items-center justify-center text-amber-400 font-black text-sm shadow-sm border border-slate-800">
-              10Q
-            </div>
-            <div className="hidden sm:block">
-              <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-slate-900 text-sm tracking-tight">10Q Challenge</span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-slate-900 text-amber-400">ADMIN</span>
-              </div>
-              <p className="text-[10px] text-slate-400 font-medium">Enterprise Academic Control</p>
-            </div>
-          </Link>
-        </div>
-
-        {/* Global Instant Search Bar */}
-        <div className="hidden md:flex items-center flex-1 max-w-md mx-6">
-          <div className="relative w-full">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search courses, questions, chapters, doubts, invoices... (Press /)"
-              value={globalAdminSearch}
-              onChange={(e) => setGlobalAdminSearch(e.target.value)}
-              className="w-full pl-9 pr-12 py-2 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-2xs"
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200 shadow-3xs">
-              /
-            </span>
-          </div>
-        </div>
-
-        {/* Right Action Icons & Harshal Jain Profile */}
-        <div className="flex items-center space-x-3">
-          {/* Quick Create Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setQuickCreateOpen(!quickCreateOpen)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-950 text-amber-400 font-extrabold text-xs transition-all shadow-xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Create</span>
-              <ChevronDown className="w-3 h-3 text-amber-300" />
-            </button>
-
-            {quickCreateOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95">
-                <button
-                  onClick={() => { setActiveTab('Course Master'); setCourseModalOpen(true); setQuickCreateOpen(false); }}
-                  className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                >
-                  <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>New Course Batch</span>
-                </button>
-                <button
-                  onClick={() => { setActiveTab('Objective Question'); setObjModalOpen(true); setQuickCreateOpen(false); }}
-                  className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                >
-                  <HelpCircle className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Add MCQ Question</span>
-                </button>
-                <button
-                  onClick={() => { setActiveTab('Video Master'); setVideoActiveTab('Basic Information'); setQuickCreateOpen(false); }}
-                  className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                >
-                  <Video className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Upload Video Lecture</span>
-                </button>
-                <button
-                  onClick={() => { setActiveTab('Blog Master'); setBlogActiveTab('Basic Information'); setQuickCreateOpen(false); }}
-                  className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                >
-                  <Edit3 className="w-3.5 h-3.5 text-rose-600" />
-                  <span>Write Blog Article</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          <Link
-            to="/"
-            target="_blank"
-            className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-bold transition-all border border-slate-200/60"
-          >
-            <span>Live Site</span>
-            <span>↗</span>
-          </Link>
-
-          <button
-            onClick={toggleFullscreen}
-            className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all"
-            title="Toggle Fullscreen"
-          >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </button>
-
-          {/* Admin Profile Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-              className="p-1 sm:px-3 sm:py-1.5 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all flex items-center space-x-2.5"
-            >
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 font-black text-xs flex items-center justify-center shadow-xs">
-                HJ
-              </div>
-              <div className="text-left hidden md:block">
-                <p className="text-xs font-bold text-slate-900 leading-none">Harshal Jain</p>
-                <p className="text-[10px] text-emerald-600 font-bold leading-none mt-1 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Master Admin
-                </p>
-              </div>
-            </button>
-
-            {userDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95">
-                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 rounded-t-2xl">
-                  <p className="text-xs font-extrabold text-slate-900">Harshal Jain</p>
-                  <p className="text-[11px] text-amber-600 font-bold">Master Administrator</p>
-                  <p className="text-[10px] text-slate-500 truncate mt-0.5">admin@10qchallenge.in</p>
-                </div>
-                <div className="py-1">
-                  <Link to="/" className="block px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 font-medium">
-                    View Live Public Site
-                  </Link>
-                  <Link to="/student/dashboard" className="block px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 font-medium">
-                    Inspect Student LMS View
-                  </Link>
-                </div>
-                <div className="border-t border-slate-100 pt-1">
-                  <button
-                    onClick={() => navigate('/login')}
-                    className="w-full text-left px-4 py-2 text-xs text-rose-600 hover:bg-rose-50 font-bold flex items-center space-x-2"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Sign Out</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* BODY WRAPPER: SHOPIFY-STYLE CATEGORIZED SIDEBAR + VIEWPORT */}
-      <div className="flex flex-1 min-h-[calc(100vh-4rem)]">
-
-        {/* LEFT SHOPIFY-STYLE SIDEBAR */}
-        <aside
-          className={`${
-            sidebarOpen ? 'w-64' : 'w-16'
-          } bg-white border-r border-slate-200/80 transition-all duration-200 flex flex-col justify-between flex-shrink-0 z-40 select-none`}
-        >
-          <div className="py-3 overflow-y-auto space-y-4">
-            {menuGroups.map((group) => (
-              <div key={group.title} className="px-3">
-                {sidebarOpen ? (
-                  <div className="px-3 pb-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
-                    {group.title}
-                  </div>
-                ) : (
-                  <div className="py-1 text-center text-[9px] text-slate-300">•</div>
-                )}
-
-                <div className="space-y-0.5">
-                  {group.items.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = activeTab === item.name || (item.subItems && item.subItems.some(s => s.name === activeTab));
-                    const isExpanded = expandedMenus[item.name];
-
-                    return (
-                      <div key={item.name} className="w-full">
-                        <button
-                          onClick={() => {
-                            if (item.hasSub) {
-                              toggleMenuExpand(item.name);
-                            } else {
-                              setActiveTab(item.name);
-                            }
-                          }}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                            isActive
-                              ? 'bg-slate-900 text-white shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
-                          }`}
-                        >
-                          <div className="flex items-center space-x-2.5 min-w-0">
-                            <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
-                            {sidebarOpen && <span className="truncate">{item.name}</span>}
-                          </div>
-
-                          {sidebarOpen && (
-                            <div className="flex items-center space-x-1.5">
-                              {item.badge && (
-                                <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold ${item.badgeColor || 'bg-slate-100 text-slate-700'}`}>
-                                  {item.badge}
-                                </span>
-                              )}
-                              {item.count !== undefined && !item.badge && (
-                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${isActive ? 'text-slate-300 bg-slate-800' : 'text-slate-400 bg-slate-100'}`}>
-                                  {item.count}
-                                </span>
-                              )}
-                              {item.hasSub && (
-                                isExpanded ? (
-                                  <ChevronDown className={`w-3.5 h-3.5 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
-                                ) : (
-                                  <ChevronRight className={`w-3.5 h-3.5 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
-                                )
-                              )}
-                            </div>
-                          )}
-                        </button>
-
-                        {/* Submenu Accordion */}
-                        {sidebarOpen && item.hasSub && isExpanded && item.subItems && (
-                          <div className="mt-1 ml-4 pl-3 border-l border-slate-200 space-y-0.5 py-0.5">
-                            {item.subItems.map((sub) => {
-                              const isSubActive = activeTab === sub.name;
-                              return (
-                                <button
-                                  key={sub.name}
-                                  onClick={() => setActiveTab(sub.name)}
-                                  className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                                    isSubActive
-                                      ? 'bg-amber-50 text-amber-900 font-extrabold border border-amber-200'
-                                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                                  }`}
-                                >
-                                  <span className={`w-1.5 h-1.5 rounded-full ${isSubActive ? 'bg-amber-500' : 'bg-slate-300'}`} />
-                                  <span className="truncate">{sub.name}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Sidebar Footer Status Banner */}
-          {sidebarOpen && (
-            <div className="p-3 m-3 rounded-2xl bg-slate-50 border border-slate-200/80">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="font-bold text-slate-700">Database</span>
-                <span className="text-emerald-600 font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Connected
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">10Q Challenge v3.4 Enterprise</p>
-            </div>
-          )}
-        </aside>
-
-        {/* MAIN VIEWPORT CONTENT */}
-        <main className="flex-1 bg-[#F8FAFC] p-6 sm:p-8 overflow-y-auto min-w-0">
-
-          {/* ========================================================= */}
-          {/* SHOPIFY-LEVEL EXECUTIVE DASHBOARD OVERVIEW */}
-          {/* ========================================================= */}
-          {activeTab === 'Dashboard' && (
-            <div className="space-y-8 max-w-7xl mx-auto animate-in fade-in">
-              {/* Header Welcome Bar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 sm:p-8 rounded-3xl text-white shadow-md relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-96 h-96 bg-radial from-amber-500/10 to-transparent blur-3xl pointer-events-none" />
-                <div className="relative z-10">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-amber-300 text-xs font-bold mb-2 border border-white/10">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Live Academic Operations • All Systems Operational</span>
-                  </div>
-                  <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-                    Welcome, Harshal Jain
-                  </h1>
-                  <p className="text-xs sm:text-sm text-slate-300 mt-1">
-                    Here is your live revenue, student enrollment, doubt SLA, and academic catalog pulse.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2 relative z-10">
-                  <button
-                    onClick={() => { setActiveTab('Course Master'); setCourseModalOpen(true); }}
-                    className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition-all shadow-sm flex items-center gap-1.5"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>New Course</span>
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('Student Doubt')}
-                    className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-all border border-white/10 flex items-center gap-1.5"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    <span>Review Doubts</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* 4 Top KPI Stat Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs hover:shadow-md transition-all">
-                  <div className="flex items-center justify-between text-slate-500 mb-3">
-                    <span className="text-xs font-bold uppercase tracking-wider">Gross Enrollment Revenue</span>
-                    <div className="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                      <Receipt className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="text-2xl sm:text-3xl font-black text-slate-900">₹0</div>
-                  <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-bold mt-2">
-                    <TrendingUp className="w-3.5 h-3.5" />
-                    <span>{invoiceList.length} total invoices</span>
-                  </div>
-                </div>
-
-                <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs hover:shadow-md transition-all">
-                  <div className="flex items-center justify-between text-slate-500 mb-3">
-                    <span className="text-xs font-bold uppercase tracking-wider">Active Courses</span>
-                    <div className="w-9 h-9 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-                      <GraduationCap className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="text-2xl sm:text-3xl font-black text-slate-900">{courseList.length}</div>
-                  <div className="flex items-center gap-1.5 text-xs text-indigo-600 font-bold mt-2">
-                    <CheckCircle className="w-3.5 h-3.5" />
-                    <span>Published in catalog</span>
-                  </div>
-                </div>
-
-                <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs hover:shadow-md transition-all">
-                  <div className="flex items-center justify-between text-slate-500 mb-3">
-                    <span className="text-xs font-bold uppercase tracking-wider">CBT Tests Attempted</span>
-                    <div className="w-9 h-9 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-                      <FileCheck className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="text-2xl sm:text-3xl font-black text-slate-900">{attemptedTestList.length}</div>
-                  <div className="flex items-center gap-1.5 text-xs text-amber-600 font-bold mt-2">
-                    <Award className="w-3.5 h-3.5" />
-                    <span>{objectiveQuestionList.length + numericalQuestionList.length} questions in bank</span>
-                  </div>
-                </div>
-
-                <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs hover:shadow-md transition-all">
-                  <div className="flex items-center justify-between text-slate-500 mb-3">
-                    <span className="text-xs font-bold uppercase tracking-wider">Student Doubts</span>
-                    <div className="w-9 h-9 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
-                      <MessageSquare className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="text-2xl sm:text-3xl font-black text-slate-900">{doubtList.length}</div>
-                  <div className="flex items-center gap-1.5 text-xs text-rose-600 font-bold mt-2">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>{doubtList.filter(d => d.status === 'Pending').length} pending resolution</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 2-Column Split: Recent Live Orders & Urgent Doubts Queue */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                {/* LEFT: Recent Orders Table */}
-                <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div>
-                      <h3 className="font-extrabold text-base text-slate-900">Recent Student Orders &amp; Invoices</h3>
-                      <p className="text-xs text-slate-500">Live transactions across BITSAT, JEE and Mentorship batches</p>
-                    </div>
-                    <button
-                      onClick={() => setActiveTab('Student Invoices')}
-                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
-                    >
-                      View All Orders →
-                    </button>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-100 text-slate-400 font-bold">
-                          <th className="py-2.5">Invoice</th>
-                          <th className="py-2.5">Student</th>
-                          <th className="py-2.5">Amount</th>
-                          <th className="py-2.5">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-medium">
-                        {invoiceList.slice(0, 5).map((inv) => (
-                          <tr key={inv.id} className="hover:bg-slate-50/70 transition-colors">
-                            <td className="py-3 font-mono font-bold text-indigo-700">{inv.invoiceNo}</td>
-                            <td className="py-3 font-bold text-slate-900">{inv.studentName}</td>
-                            <td className="py-3 font-bold text-slate-900">{inv.invoiceAmount}</td>
-                            <td className="py-3">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                                inv.invoiceStatus === 'Paid'
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                  : inv.invoiceStatus === 'Pending'
-                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                  : 'bg-rose-50 text-rose-700 border border-rose-200'
-                              }`}>
-                                {inv.invoiceStatus}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* RIGHT: Urgent Doubts Queue */}
-                <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div>
-                      <h3 className="font-extrabold text-base text-slate-900">Student Doubts Queue</h3>
-                      <p className="text-xs text-slate-500">Queries needing BITSian mentor resolution</p>
-                    </div>
-                    <button
-                      onClick={() => setActiveTab('Student Doubt')}
-                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
-                    >
-                      Open Queue ({doubtList.filter(d => d.status === 'Pending').length}) →
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {doubtList.slice(0, 3).map((doubt) => (
-                      <div key={doubt.id} className="p-3.5 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-2">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-bold text-slate-900">{doubt.studentName}</span>
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
-                            doubt.status === 'Answered' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            {doubt.status}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-700 line-clamp-2 leading-relaxed">
-                          {doubt.doubtText}
-                        </p>
-                        <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
-                          <span>{doubt.module}</span>
-                          <button
-                            onClick={() => { setActiveTab('Student Doubt'); setSelectedDoubt(doubt); }}
-                            className="font-bold text-indigo-600 hover:underline"
-                          >
-                            Reply Now
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Quick Jump Academic Shortcuts */}
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-                <h3 className="font-extrabold text-base text-slate-900">Academic Master Modules Hub</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                  {[
-                    { title: 'Course Master', desc: `${courseList.length} Batches`, tab: 'Course Master', icon: BookOpen, color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-                    { title: 'Question Bank', desc: 'MCQ & Numerical', tab: 'Objective Question', icon: HelpCircle, color: 'bg-amber-50 text-amber-700 border-amber-200' },
-                    { title: 'Video Lectures', desc: 'Vimeo Streams', tab: 'Video Master', icon: Video, color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-                    { title: 'Document PDFs', desc: 'Notes & Formulae', tab: 'Document Master', icon: FileText, color: 'bg-blue-50 text-blue-700 border-blue-200' },
-                    { title: 'Discount Coupons', desc: 'Promo Codes', tab: 'Coupon', icon: Ticket, color: 'bg-purple-50 text-purple-700 border-purple-200' },
-                    { title: 'SEO Pages', desc: 'Meta Tags & URLs', tab: 'SEO Page', icon: Globe, color: 'bg-rose-50 text-rose-700 border-rose-200' },
-                  ].map((shortcut) => {
-                    const SIcon = shortcut.icon;
-                    return (
-                      <button
-                        key={shortcut.title}
-                        onClick={() => setActiveTab(shortcut.tab)}
-                        className={`p-4 rounded-2xl border text-left transition-all hover:scale-102 hover:shadow-sm ${shortcut.color} flex flex-col justify-between`}
-                      >
-                        <SIcon className="w-5 h-5 mb-2" />
-                        <div>
-                          <div className="font-extrabold text-xs">{shortcut.title}</div>
-                          <div className="text-[10px] opacity-80 mt-0.5">{shortcut.desc}</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
+    <AdminShell
+      activeTab={activeTab}
+      onSelectTab={(tab) => {
+        setActiveTab(tab);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }}
+      counts={dynamicCounts}
+    >
+      {/* ========================================================= */}
+      {/* 1. DASHBOARD VIEW (FEATURE 01: FOUNDATION OVERVIEW) */}
+      {/* ========================================================= */}
+      {activeTab === 'Dashboard' && (
+        <DashboardOverview
+          totalCourses={courseList.length || 2}
+          activeCourses={courseList.filter(c => c.isActive !== false).length || 2}
+          totalExams={examList.length || 5}
+          totalQuestions={objectiveQuestionList.length + numericalQuestionList.length || 5}
+          totalStudents={2430}
+          totalTestSeries={25}
+          onNavigateTab={(tab) => {
+            setActiveTab(tab);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        />
+      )}
 
           {/* EXAM MASTER VIEW */}
           {activeTab === 'Exam Master' && (
@@ -7331,7 +6802,7 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
           )}
 
           {/* 12. SITE NOTIFICATION */}
-          {activeTab === 'Site Notification' && (
+          {(activeTab === 'Notification' || activeTab === 'Site Notification') && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -7951,9 +7422,7 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
             </div>
           )}
 
-        </main>
 
-      </div>
 
       {/* MODAL FOR ADD / EDIT COURSE */}
       {courseModalOpen && (
@@ -8013,6 +7482,6 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
         </div>
       )}
 
-    </div>
+    </AdminShell>
   );
 }
