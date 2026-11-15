@@ -9,13 +9,35 @@ export default function Exam() {
   const params = useParams();
   const rawName = params.examName || params.slug || 'BITSAT';
   const examKey = Object.keys(examsData).find(k => k.toLowerCase() === rawName.toLowerCase()) || 'BITSAT';
-  const exam = examsData[examKey] || examsData.BITSAT;
+  const staticExam = examsData[examKey] || examsData.BITSAT;
+  const [liveExam, setLiveExam] = useState(null);
+
+  const exam = liveExam ? {
+    ...staticExam,
+    name: liveExam.examName || staticExam.name,
+    heroTitle: liveExam.metaTitle || staticExam.heroTitle,
+    description: liveExam.description || staticExam.description,
+  } : staticExam;
+
   const [courses, setCourses] = useState(() => {
     const stored = getStoredCourses();
     return stored.length > 0 ? stored : coursesData;
   });
 
   useEffect(() => {
+    // Fetch live exam metadata from Exam Master
+    fetch(`/api/exams/${encodeURIComponent(rawName)}`, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data) {
+          setLiveExam(json.data);
+          if (typeof document !== 'undefined' && json.data.metaTitle) {
+            document.title = json.data.metaTitle;
+          }
+        }
+      })
+      .catch(() => {});
+
     const handleUpdate = () => {
       const stored = getStoredCourses();
       setCourses(stored.length > 0 ? stored : coursesData);

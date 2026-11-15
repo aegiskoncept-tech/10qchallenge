@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "examName": "BITSAT",
+    "slug": "bitsat",
+    "isActive": true,
+    "displayIndex": 1,
+    "description": "BITSAT Prep"
+  },
+  {
+    "id": 2,
+    "examName": "Comedk",
+    "slug": "comedk",
+    "isActive": true,
+    "displayIndex": 2,
+    "description": "COMEDK Prep"
+  },
+  {
+    "id": 3,
+    "examName": "JEE",
+    "slug": "jee",
+    "isActive": true,
+    "displayIndex": 3,
+    "description": "JEE Prep"
+  },
+  {
+    "id": 4,
+    "examName": "Manipal (MET)",
+    "slug": "manipal-met",
+    "isActive": true,
+    "displayIndex": 4,
+    "description": "MET Prep"
+  },
+  {
+    "id": 5,
+    "examName": "VITEEE",
+    "slug": "viteee",
+    "isActive": true,
+    "displayIndex": 5,
+    "description": "VITEEE Prep"
+  }
+]

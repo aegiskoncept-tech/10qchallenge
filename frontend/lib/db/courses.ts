@@ -7,6 +7,7 @@ export interface CourseRecord {
   shortDescription?: string;
   description?: string;
   exam: string;
+  examId?: number;
   originalPrice: number | string;
   discountedPrice: number | string;
   price: number | string;
@@ -343,6 +344,7 @@ export function createCourse(data: Partial<CourseRecord> & Record<string, any>, 
     description: data.description?.trim() || data.shortDescription?.trim() || '',
     exam: examVal,
     examTag: examVal,
+    examId: data.examId ? Number(data.examId) : undefined,
     originalPrice: origPriceVal,
     discountedPrice: priceVal,
     discountPrice: Number(priceVal) || 4999,
@@ -424,6 +426,7 @@ export function updateCourse(id: number, data: Partial<CourseRecord> & Record<st
     slug: newSlug,
     exam: examVal,
     examTag: examVal,
+    examId: data.examId ? Number(data.examId) : existing.examId,
     price: priceVal,
     discountedPrice: priceVal,
     discountPrice: Number(priceVal) || 4999,

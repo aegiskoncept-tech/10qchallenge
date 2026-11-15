@@ -61,6 +61,7 @@ import {
 } from 'lucide-react';
 import CourseContentAssignmentView from '@/components/admin/CourseContentAssignment';
 import { coursesData as initialCourses, getStoredCourses, saveStoredCourses, fetchAdminCourses, apiCreateCourse, apiUpdateCourse, apiDeleteCourse, apiUploadFile } from '../data/courses';
+import { getStoredExams, saveStoredExams, fetchAdminExams, fetchServerExams, apiCreateExam, apiUpdateExam, apiDeleteExam } from '../data/exams';
 import { blogsData as initialBlogs } from '../data/blogs';
 import { MASTER_QUESTION_BANK, SUBJECT_MASTER_LIST, CHAPTER_MASTER_LIST } from '../data/questionBank';
 
@@ -92,72 +93,133 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
     setExpandedMenus((prev) => ({ ...prev, [menuName]: !prev[menuName] }));
   };
 
-  // 1. EXAM MASTER STATE
-  const [examList, setExamList] = useState([
-    {
-      id: 1,
-      examName: 'BITSAT',
-      slug: 'bitsat',
-      description: 'BITSAT Entrance Exam preparation master course & test series.',
-      metaTitle: 'BITSAT 2026 Entrance Prep | 10Q Challenge',
-      metaDescription: 'Prepare for BITSAT 2026 with top BITSian mentors.'
-    },
-    {
-      id: 2,
-      examName: 'Comedk',
-      slug: 'comedk',
-      description: 'COMEDK UGET Engineering entrance preparation course.',
-      metaTitle: 'COMEDK 2026 Test Series & Courses',
-      metaDescription: 'Score top rank in COMEDK 2026.'
-    },
-    {
-      id: 3,
-      examName: 'JEE',
-      slug: 'jee',
-      description: 'JEE Main & Advanced comprehensive mentorship and question bank.',
-      metaTitle: 'JEE Main & Advanced 2026 Mastery',
-      metaDescription: 'Target IITs and NITs with 10Q Challenge.'
-    },
-    {
-      id: 4,
-      examName: 'Manipal (MET)',
-      slug: 'manipal-met',
-      description: 'Manipal Entrance Test (MET) crash course and test series.',
-      metaTitle: 'MET 2026 Preparation Guide',
-      metaDescription: 'Clear Manipal MET with top percentile.'
-    },
-    {
-      id: 5,
-      examName: 'VITEEE',
-      slug: 'viteee',
-      description: 'VITEEE speed accelerator and test series pack.',
-      metaTitle: 'VITEEE 2026 Crash Course',
-      metaDescription: 'Get admission in VIT Vellore.'
-    }
-  ]);
-  const [examForm, setExamForm] = useState({ id: null, examName: '', slug: '', description: '', metaTitle: '', metaDescription: '' });
+  // 1. EXAM MASTER STATE (Connected to Central Database Engine)
+  const [examList, setExamList] = useState(() => {
+    const cached = getStoredExams();
+    return cached.length > 0 ? cached : [];
+  });
+  const [examLoading, setExamLoading] = useState(false);
+  const [examForm, setExamForm] = useState({
+    id: null,
+    examName: '',
+    slug: '',
+    description: '',
+    metaTitle: '',
+    metaDescription: '',
+    isActive: true,
+  });
   const [examSearchTerm, setExamSearchTerm] = useState('');
 
-  const handleSaveExam = (e) => {
-    e.preventDefault();
-    if (!examForm.examName.trim()) return;
-    if (examForm.id) {
-      setExamList(examList.map(item => item.id === examForm.id ? { ...examForm } : item));
-    } else {
-      const newId = examList.length ? Math.max(...examList.map(item => item.id)) + 1 : 1;
-      setExamList([...examList, { ...examForm, id: newId, slug: examForm.slug || examForm.examName.toLowerCase().replace(/\s+/g, '-') }]);
+  // Synchronize exams from central server database
+  const loadExams = async (term = '') => {
+    try {
+      const data = await fetchAdminExams(term);
+      if (Array.isArray(data)) {
+        setExamList(data);
+      }
+    } catch (err) {
+      console.warn('[Exam Master] Failed to fetch server exams:', err);
     }
-    setExamForm({ id: null, examName: '', slug: '', description: '', metaTitle: '', metaDescription: '' });
+  };
+
+  useEffect(() => {
+    loadExams();
+
+    const handleExamUpdate = () => {
+      loadExams();
+    };
+
+    window.addEventListener('10q_exams_updated', handleExamUpdate);
+    window.addEventListener('storage', handleExamUpdate);
+
+    return () => {
+      window.removeEventListener('10q_exams_updated', handleExamUpdate);
+      window.removeEventListener('storage', handleExamUpdate);
+    };
+  }, []);
+
+  const handleSaveExam = async (e) => {
+    e.preventDefault();
+    if (!examForm.examName?.trim()) {
+      alert('Exam name is required.');
+      return;
+    }
+    const autoSlug = examForm.slug?.trim() || examForm.examName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+    // Get current logged-in admin identifier for audit tracking
+    const currentAdminUser = (() => {
+      try {
+        const raw = typeof window !== 'undefined' ? localStorage.getItem('10q_user') : null;
+        return raw ? JSON.parse(raw)?.email || JSON.parse(raw)?.name : 'Administrator';
+      } catch {
+        return 'Administrator';
+      }
+    })();
+
+    setExamLoading(true);
+    try {
+      const payload = {
+        ...examForm,
+        examName: examForm.examName.trim(),
+        slug: autoSlug,
+        isActive: examForm.isActive !== undefined ? examForm.isActive : true,
+      };
+
+      if (examForm.id) {
+        await apiUpdateExam(examForm.id, payload, currentAdminUser);
+        alert('Exam updated successfully!');
+      } else {
+        await apiCreateExam(payload, currentAdminUser);
+        alert('Exam created successfully in Exam Master!');
+      }
+
+      setExamForm({ id: null, examName: '', slug: '', description: '', metaTitle: '', metaDescription: '', isActive: true });
+      await loadExams();
+    } catch (err) {
+      alert(err.message || 'Failed to save exam.');
+    } finally {
+      setExamLoading(false);
+    }
   };
 
   const handleEditExam = (exam) => {
-    setExamForm(exam);
+    setExamForm({
+      id: exam.id,
+      examName: exam.examName || '',
+      slug: exam.slug || '',
+      description: exam.description || '',
+      metaTitle: exam.metaTitle || '',
+      metaDescription: exam.metaDescription || '',
+      isActive: exam.isActive !== undefined ? exam.isActive : true,
+    });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDeleteExam = (id) => {
-    if (window.confirm('Delete this exam?')) {
-      setExamList(examList.filter(item => item.id !== id));
+  const handleDeleteExam = async (exam) => {
+    const courseCount = exam.associatedCoursesCount || 0;
+    if (courseCount > 0) {
+      alert(`⚠️ Unsafe Deletion Blocked!\n\n${courseCount} course(s) are currently associated with "${exam.examName}".\n\nTo protect existing website data, this exam cannot be deleted while courses depend on it. You can deactivate the exam instead.`);
+      return;
+    }
+
+    if (window.confirm(`Are you sure you want to permanently delete "${exam.examName}" from Exam Master?`)) {
+      try {
+        await apiDeleteExam(exam.id);
+        alert('Exam successfully removed from master catalogue.');
+        await loadExams();
+      } catch (err) {
+        alert(err.message || 'Failed to delete exam.');
+      }
+    }
+  };
+
+  const handleToggleExamStatus = async (exam) => {
+    const newStatus = !exam.isActive;
+    try {
+      await apiUpdateExam(exam.id, { ...exam, isActive: newStatus });
+      await loadExams();
+    } catch (err) {
+      alert(err.message || 'Failed to update exam status.');
     }
   };
 
@@ -499,8 +561,10 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
     setCourseSaveError('');
 
     try {
+      const matchedExam = examList.find(e => e.examName.toLowerCase().trim() === courseForm.exam.toLowerCase().trim());
       const payload = {
         ...courseForm,
+        examId: matchedExam ? matchedExam.id : (courseForm.examId || undefined),
         slug: autoSlug,
         price: priceFormatted,
         discountedPrice: priceFormatted,
@@ -1655,28 +1719,55 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                     />
                   </div>
 
+                  <div className="flex items-center space-x-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="examIsActive"
+                      checked={examForm.isActive !== false}
+                      onChange={(e) => setExamForm({ ...examForm, isActive: e.target.checked })}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                    />
+                    <label htmlFor="examIsActive" className="text-xs font-semibold text-slate-700 cursor-pointer">
+                      Active (Available for Course Master assignments)
+                    </label>
+                  </div>
+
                   <div className="pt-2 flex items-center space-x-3">
                     <button
                       type="submit"
-                      className="px-5 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded-md shadow-sm transition-colors"
+                      disabled={examLoading}
+                      className="px-5 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded-md shadow-sm transition-colors disabled:opacity-50"
                     >
-                      {examForm.id ? 'Update' : 'Save'}
+                      {examLoading ? 'Saving...' : examForm.id ? 'Update Exam' : 'Save Exam'}
                     </button>
+                    {examForm.id && (
+                      <button
+                        type="button"
+                        onClick={() => setExamForm({ id: null, examName: '', slug: '', description: '', metaTitle: '', metaDescription: '', isActive: true })}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-md transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    )}
                   </div>
                 </form>
               </div>
 
               {/* EXAM TABLE */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2 w-full sm:w-64">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center space-x-2 w-full sm:w-80">
                     <span className="text-xs font-medium text-slate-600">Search:</span>
                     <input
                       type="text"
+                      placeholder="Search by exam name or slug..."
                       value={examSearchTerm}
                       onChange={(e) => setExamSearchTerm(e.target.value)}
                       className="w-full px-3 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500"
                     />
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Total Exams: <span className="font-bold text-slate-800">{examList.length}</span>
                   </div>
                 </div>
 
@@ -1684,34 +1775,82 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                   <table className="w-full text-left text-xs text-slate-700">
                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[11px]">
                       <tr>
-                        <th className="p-3 border-r border-slate-200 w-3/4">Exam</th>
-                        <th className="p-3 text-center w-1/4">ACTION</th>
+                        <th className="p-3 border-r border-slate-200">Exam Name</th>
+                        <th className="p-3 border-r border-slate-200">Slug</th>
+                        <th className="p-3 border-r border-slate-200 text-center">Associated Courses</th>
+                        <th className="p-3 border-r border-slate-200 text-center">Status</th>
+                        <th className="p-3 border-r border-slate-200 text-center">Last Updated</th>
+                        <th className="p-3 text-center">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 font-medium">
                       {examList
-                        .filter(ex => ex.examName.toLowerCase().includes(examSearchTerm.toLowerCase()))
-                        .map((ex) => (
-                          <tr key={ex.id} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="p-3 border-r border-slate-200 font-bold text-slate-800">
-                              {ex.examName}
-                            </td>
-                            <td className="p-3 text-center space-x-2">
-                              <button
-                                onClick={() => handleEditExam(ex)}
-                                className="p-1.5 border border-slate-300 hover:border-slate-500 rounded-md text-slate-700 hover:bg-slate-100 transition-colors"
-                              >
-                                <Edit className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteExam(ex.id)}
-                                className="p-1.5 border border-rose-200 hover:border-rose-400 rounded-md text-rose-600 hover:bg-rose-50 transition-colors"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        .filter(ex => 
+                          (ex.examName || '').toLowerCase().includes(examSearchTerm.toLowerCase()) ||
+                          (ex.slug || '').toLowerCase().includes(examSearchTerm.toLowerCase())
+                        )
+                        .map((ex) => {
+                          const courseCount = ex.associatedCoursesCount || 0;
+                          return (
+                            <tr key={ex.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3 border-r border-slate-200 font-bold text-slate-800">
+                                <span>{ex.examName}</span>
+                              </td>
+                              <td className="p-3 border-r border-slate-200 font-mono text-[11px] text-slate-600">
+                                {ex.slug}
+                              </td>
+                              <td className="p-3 border-r border-slate-200 text-center">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                  courseCount > 0 
+                                    ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+                                    : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                }`}>
+                                  {courseCount} {courseCount === 1 ? 'course' : 'courses'}
+                                </span>
+                              </td>
+                              <td className="p-3 border-r border-slate-200 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleExamStatus(ex)}
+                                  title={ex.isActive !== false ? 'Click to deactivate exam' : 'Click to activate exam'}
+                                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold cursor-pointer transition-colors ${
+                                    ex.isActive !== false
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                                      : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                                  }`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${ex.isActive !== false ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                  {ex.isActive !== false ? 'Active' : 'Inactive'}
+                                </button>
+                              </td>
+                              <td className="p-3 border-r border-slate-200 text-center text-slate-500 text-[11px]">
+                                {ex.updatedAt ? new Date(ex.updatedAt).toLocaleDateString() : '—'}
+                              </td>
+                              <td className="p-3 text-center space-x-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditExam(ex)}
+                                  title="Edit Exam"
+                                  className="p-1.5 border border-slate-300 hover:border-slate-500 rounded-md text-slate-700 hover:bg-slate-100 transition-colors"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteExam(ex)}
+                                  title={courseCount > 0 ? `Cannot delete: ${courseCount} course(s) depend on this exam` : 'Delete Exam'}
+                                  className={`p-1.5 border rounded-md transition-colors ${
+                                    courseCount > 0
+                                      ? 'border-slate-200 text-slate-300 cursor-not-allowed'
+                                      : 'border-rose-200 hover:border-rose-400 text-rose-600 hover:bg-rose-50'
+                                  }`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>
@@ -3041,11 +3180,13 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                           className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-2xs"
                         >
                           <option value="">Select Exam</option>
-                          {examList.map((exam) => (
-                            <option key={exam.id} value={exam.examName}>
-                              {exam.examName}
-                            </option>
-                          ))}
+                          {examList
+                            .filter((exam) => exam.isActive !== false || exam.examName === courseForm.exam)
+                            .map((exam) => (
+                              <option key={exam.id} value={exam.examName}>
+                                {exam.examName}{!exam.isActive ? ' (Inactive)' : ''}
+                              </option>
+                            ))}
                         </select>
                       </div>
 

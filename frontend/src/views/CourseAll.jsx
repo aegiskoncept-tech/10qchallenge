@@ -16,6 +16,21 @@ export default function CourseAll() {
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedExam, setSelectedExam] = useState('All');
+  const [exams, setExams] = useState(['All', 'BITSAT', 'JEE', 'VITEEE', 'MET', 'Comedk', 'Mentorship']);
+
+  useEffect(() => {
+    // Dynamically load active exams from Exam Master
+    fetch('/api/exams', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const names = json.data.map((e) => e.examName);
+          const combined = Array.from(new Set(['All', ...names, 'Mentorship']));
+          setExams(combined);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handleUpdate = () => {
@@ -59,8 +74,6 @@ export default function CourseAll() {
       window.removeEventListener('storage', handleUpdate);
     };
   }, []);
-
-  const exams = ['All', 'BITSAT', 'JEE', 'VITEEE', 'MET', 'Comedk', 'Mentorship'];
 
   const filteredCourses = courses.filter((course) => {
     const matchesSearch =

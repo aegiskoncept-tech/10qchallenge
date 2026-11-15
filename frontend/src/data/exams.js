@@ -105,3 +105,137 @@ export const examsData = {
     ]
   }
 };
+
+// ============================================================================
+// CENTRAL EXAM MASTER CLIENT SYNCHRONIZATION HELPERS
+// ============================================================================
+
+const EXAMS_STORAGE_KEY = '10q_exams_data_fresh_v1';
+
+export function getStoredExams() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(EXAMS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error('Failed to parse exams from localStorage:', err);
+    return [];
+  }
+}
+
+export function saveStoredExams(exams) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(EXAMS_STORAGE_KEY, JSON.stringify(exams));
+    window.dispatchEvent(new Event('10q_exams_updated'));
+  } catch (err) {
+    console.error('Failed to save exams to localStorage:', err);
+  }
+}
+
+// Fetch public active exams from central database
+export async function fetchServerExams() {
+  try {
+    const res = await fetch('/api/exams', { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        saveStoredExams(json.data);
+        return json.data;
+      }
+    }
+  } catch (err) {
+    console.warn('[Exams API] Failed to fetch server exams, using cached fallback:', err);
+  }
+  return getStoredExams();
+}
+
+// Fetch admin exams (with course counts and search filter)
+export async function fetchAdminExams(searchTerm = '') {
+  try {
+    const query = searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : '';
+    const res = await fetch(`/api/admin/exams${query}`, { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        saveStoredExams(json.data);
+        return json.data;
+      }
+    }
+  } catch (err) {
+    console.warn('[Admin Exams API] Failed to fetch admin exams:', err);
+  }
+  return getStoredExams();
+}
+
+// Create new exam in central database
+export async function apiCreateExam(examData, adminUser = 'Administrator') {
+  try {
+    const res = await fetch('/api/admin/exams', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-user': adminUser,
+      },
+      body: JSON.stringify(examData),
+    });
+
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || 'Failed to create exam in Exam Master.');
+    }
+
+    await fetchAdminExams();
+    return json.data;
+  } catch (err) {
+    console.error('[Create Exam Error]', err);
+    throw err;
+  }
+}
+
+// Update existing exam in central database
+export async function apiUpdateExam(id, examData, adminUser = 'Administrator') {
+  try {
+    const res = await fetch(`/api/admin/exams/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-user': adminUser,
+      },
+      body: JSON.stringify(examData),
+    });
+
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || 'Failed to update exam in Exam Master.');
+    }
+
+    await fetchAdminExams();
+    return json.data;
+  } catch (err) {
+    console.error('[Update Exam Error]', err);
+    throw err;
+  }
+}
+
+// Delete exam with dependency check
+export async function apiDeleteExam(id) {
+  try {
+    const res = await fetch(`/api/admin/exams/${id}`, {
+      method: 'DELETE',
+    });
+
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || 'Failed to delete exam.');
+    }
+
+    await fetchAdminExams();
+    return true;
+  } catch (err) {
+    console.error('[Delete Exam Error]', err);
+    throw err;
+  }
+}

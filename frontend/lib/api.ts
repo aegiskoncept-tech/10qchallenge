@@ -174,7 +174,55 @@ export const api = {
 
   // EXAMS
   async getExams(): Promise<Exam[]> {
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch('/api/exams');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+            return json.data.map((e: any) => ({
+              id: e.id,
+              name: e.examName || e.name,
+              fullName: e.metaTitle || e.fullName || e.examName,
+              slug: e.slug,
+              description: e.description || '',
+              totalMarks: e.totalMarks || 300,
+              durationMinutes: e.durationMinutes || 180,
+            }));
+          }
+        }
+      } catch (err) {
+        // fallback
+      }
+    }
     return MOCK_EXAMS;
+  },
+
+  async getExamBySlug(slug: string): Promise<Exam | null> {
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch(`/api/exams/${encodeURIComponent(slug)}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            const e = json.data;
+            return {
+              id: e.id,
+              name: e.examName || e.name,
+              fullName: e.metaTitle || e.fullName || e.examName,
+              slug: e.slug,
+              description: e.description || '',
+              totalMarks: e.totalMarks || 300,
+              durationMinutes: e.durationMinutes || 180,
+            };
+          }
+        }
+      } catch (err) {
+        // fallback
+      }
+    }
+    const exams = await this.getExams();
+    return exams.find((e) => e.slug.toLowerCase() === slug.toLowerCase()) || null;
   },
 
   // BLOGS
