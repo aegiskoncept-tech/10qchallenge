@@ -65,6 +65,7 @@ import { getStoredExams, saveStoredExams, fetchAdminExams, fetchServerExams, api
 import { getStoredSubjects, saveStoredSubjects, fetchAdminSubjects, fetchServerSubjects, apiCreateSubject, apiUpdateSubject, apiDeleteSubject, fetchCourseSubjects, apiAssignCourseSubjects } from '../data/subjects';
 import { fetchAdminChapters, apiCreateChapter, apiUpdateChapter, apiDeleteChapter } from '../data/chapters';
 import { fetchAdminTopics, apiCreateTopic, apiUpdateTopic, apiDeleteTopic } from '../data/topics';
+import { fetchAdminQuestions, apiCreateQuestion, apiUpdateQuestion, apiDeleteQuestion } from '../data/questions';
 import { blogsData as initialBlogs } from '../data/blogs';
 import { MASTER_QUESTION_BANK, SUBJECT_MASTER_LIST, CHAPTER_MASTER_LIST } from '../data/questionBank';
 
@@ -648,126 +649,284 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
     }
   };
 
-  // 5. OBJECTIVE QUESTION STATE
-  const [objectiveQuestionList, setObjectiveQuestionList] = useState(
-    MASTER_QUESTION_BANK.filter(q => q.type === 'MCQ').map(q => ({
-      id: q.id,
-      subject: q.subject,
-      chapter: q.chapter,
-      question: q.questionText,
-      optionA: q.options[0]?.text || '',
-      optionB: q.options[1]?.text || '',
-      optionC: q.options[2]?.text || '',
-      optionD: q.options[3]?.text || '',
-      correctOption: q.correctOption,
-      difficulty: q.difficulty
-    }))
-  );
+  // 5. OBJECTIVE QUESTION STATE (PERSISTENT & REUSABLE QUESTION BANK)
+  const [objectiveQuestionList, setObjectiveQuestionList] = useState([]);
   const [objModalOpen, setObjModalOpen] = useState(false);
   const [objSubjectFilter, setObjSubjectFilter] = useState('');
-  const [objQuestionForm, setObjQuestionForm] = useState({
+  const [objChapterFilter, setObjChapterFilter] = useState('');
+  const [objDifficultyFilter, setObjDifficultyFilter] = useState('');
+  const [objSearchTerm, setObjSearchTerm] = useState('');
+  const [objEditorTab, setObjEditorTab] = useState('Question'); // 'Question' | 'Answer 1' | 'Answer 2' | 'Answer 3' | 'Answer 4' | 'Answer Explanation'
+  const [isSavingObjQuestion, setIsSavingObjQuestion] = useState(false);
+
+  const defaultObjQuestionForm = {
     id: null,
-    subject: 'Physics',
-    chapter: 'Rotational Motion & Mechanics',
-    question: '',
+    subjectId: '',
+    chapterId: '',
+    questionContent: '',
     optionA: '',
     optionB: '',
     optionC: '',
     optionD: '',
-    correctOption: 'Option A',
-    difficulty: 'Medium'
-  });
-  const [objSearchTerm, setObjSearchTerm] = useState('');
+    correctOption: 'A',
+    explanation: '',
+    difficulty: 'Medium',
+    orderNumber: '1',
+    isActive: true
+  };
+  const [objQuestionForm, setObjQuestionForm] = useState(defaultObjQuestionForm);
 
-  const handleSaveObjQuestion = (e) => {
-    e.preventDefault();
-    if (!objQuestionForm.question.trim()) return;
-    if (objQuestionForm.id) {
-      setObjectiveQuestionList(objectiveQuestionList.map(q => q.id === objQuestionForm.id ? { ...objQuestionForm } : q));
-    } else {
-      const newId = objectiveQuestionList.length ? Math.max(...objectiveQuestionList.map(q => q.id)) + 1 : 1;
-      setObjectiveQuestionList([...objectiveQuestionList, { ...objQuestionForm, id: newId }]);
+  // 6. NUMERICAL QUESTION STATE (PERSISTENT & REUSABLE QUESTION BANK)
+  const [numericalQuestionList, setNumericalQuestionList] = useState([]);
+  const [numModalOpen, setNumModalOpen] = useState(false);
+  const [numSubjectFilter, setNumSubjectFilter] = useState('');
+  const [numChapterFilter, setNumChapterFilter] = useState('');
+  const [numDifficultyFilter, setNumDifficultyFilter] = useState('');
+  const [numSearchTerm, setNumSearchTerm] = useState('');
+  const [numEditorTab, setNumEditorTab] = useState('Question'); // 'Question' | 'Answer' | 'Answer Explanation'
+  const [isSavingNumQuestion, setIsSavingNumQuestion] = useState(false);
+
+  const defaultNumQuestionForm = {
+    id: null,
+    subjectId: '',
+    chapterId: '',
+    questionContent: '',
+    rangeFrom: '',
+    rangeTo: '',
+    tolerance: '0.05',
+    explanation: '',
+    difficulty: 'Medium',
+    orderNumber: '1',
+    isActive: true
+  };
+  const [numQuestionForm, setNumQuestionForm] = useState(defaultNumQuestionForm);
+
+  // Load questions from master database on mount
+  const loadQuestions = async () => {
+    try {
+      const [objData, numData] = await Promise.all([
+        fetchAdminQuestions({ type: 'objective' }),
+        fetchAdminQuestions({ type: 'numerical' })
+      ]);
+      if (Array.isArray(objData)) setObjectiveQuestionList(objData);
+      if (Array.isArray(numData)) setNumericalQuestionList(numData);
+    } catch (err) {
+      console.error('[Questions Load Error]', err);
     }
-    setObjQuestionForm({
-      id: null,
-      subject: 'Physics',
-      chapter: 'Rotational Motion & Mechanics',
-      question: '',
-      optionA: '',
-      optionB: '',
-      optionC: '',
-      optionD: '',
-      correctOption: 'Option A',
-      difficulty: 'Medium'
-    });
-    setObjModalOpen(false);
+  };
+
+  useEffect(() => {
+    loadQuestions();
+  }, []);
+
+  // Helper to get chapters belonging to a subject
+  const getChaptersForSubject = (sId) => {
+    if (!sId) return [];
+    return chapterList.filter(ch => String(ch.subjectId) === String(sId));
+  };
+
+  const getSubjectName = (sId) => {
+    if (!sId) return '—';
+    const s = subjectList.find(sub => String(sub.id) === String(sId));
+    return s ? s.name : `Subject #${sId}`;
+  };
+
+  const getChapterName = (cId) => {
+    if (!cId) return '—';
+    const c = chapterList.find(ch => String(ch.id) === String(cId));
+    return c ? c.name : `Chapter #${cId}`;
+  };
+
+  // Objective Question Handlers
+  const handleSaveObjQuestion = async (e) => {
+    e.preventDefault();
+    if (!objQuestionForm.subjectId) {
+      alert('Validation Error: Subject is required.');
+      return;
+    }
+    if (!objQuestionForm.chapterId) {
+      alert('Validation Error: Chapter is required.');
+      return;
+    }
+    if (!objQuestionForm.questionContent.trim()) {
+      alert('Validation Error: Question Content is required.');
+      return;
+    }
+    if (!objQuestionForm.optionA.trim() || !objQuestionForm.optionB.trim() || !objQuestionForm.optionC.trim() || !objQuestionForm.optionD.trim()) {
+      alert('Validation Error: All 4 answer options (Option 1, 2, 3, 4) are required.');
+      return;
+    }
+    if (!['A', 'B', 'C', 'D'].includes(String(objQuestionForm.correctOption).toUpperCase())) {
+      alert('Validation Error: Exactly one correct answer option (Option 1, 2, 3, or 4) must be marked correct.');
+      return;
+    }
+
+    setIsSavingObjQuestion(true);
+    try {
+      const payload = {
+        questionType: 'objective',
+        subjectId: Number(objQuestionForm.subjectId),
+        chapterId: Number(objQuestionForm.chapterId),
+        questionContent: objQuestionForm.questionContent.trim(),
+        optionA: objQuestionForm.optionA.trim(),
+        optionB: objQuestionForm.optionB.trim(),
+        optionC: objQuestionForm.optionC.trim(),
+        optionD: objQuestionForm.optionD.trim(),
+        correctOption: String(objQuestionForm.correctOption).toUpperCase(),
+        explanation: objQuestionForm.explanation.trim(),
+        difficulty: objQuestionForm.difficulty || 'Medium',
+        orderNumber: Number(objQuestionForm.orderNumber) || 1,
+        isActive: Boolean(objQuestionForm.isActive)
+      };
+
+      if (objQuestionForm.id) {
+        await apiUpdateQuestion(objQuestionForm.id, payload);
+        alert('Objective Question updated successfully!');
+      } else {
+        await apiCreateQuestion(payload);
+        alert('Objective Question created successfully in Question Bank!');
+      }
+
+      await loadQuestions();
+      setObjQuestionForm(defaultObjQuestionForm);
+      setObjEditorTab('Question');
+      setObjModalOpen(false);
+    } catch (err) {
+      alert(err.message || 'Failed to save question.');
+    } finally {
+      setIsSavingObjQuestion(false);
+    }
   };
 
   const handleEditObjQuestion = (q) => {
-    setObjQuestionForm(q);
+    setObjQuestionForm({
+      id: q.id,
+      subjectId: String(q.subjectId || ''),
+      chapterId: String(q.chapterId || ''),
+      questionContent: q.questionContent || q.question || '',
+      optionA: q.optionA || '',
+      optionB: q.optionB || '',
+      optionC: q.optionC || '',
+      optionD: q.optionD || '',
+      correctOption: q.correctOption ? q.correctOption.replace(/^Option\s+/i, '').toUpperCase() : 'A',
+      explanation: q.explanation || '',
+      difficulty: q.difficulty || 'Medium',
+      orderNumber: String(q.orderNumber || '1'),
+      isActive: q.isActive !== false
+    });
+    setObjEditorTab('Question');
     setObjModalOpen(true);
   };
 
-  const handleDeleteObjQuestion = (id) => {
-    if (window.confirm('Are you sure you want to delete this objective question?')) {
-      setObjectiveQuestionList(objectiveQuestionList.filter(q => q.id !== id));
+  const handleDeleteObjQuestion = async (id) => {
+    if (window.confirm('Are you sure you want to delete this objective question from the Question Bank?')) {
+      try {
+        await apiDeleteQuestion(id);
+        await loadQuestions();
+        alert('Question deleted successfully.');
+      } catch (err) {
+        alert(err.message || 'Failed to delete question.');
+      }
     }
   };
 
-  // 6. NUMERICAL QUESTION STATE
-  const [numericalQuestionList, setNumericalQuestionList] = useState(
-    MASTER_QUESTION_BANK.filter(q => q.type === 'NUMERICAL').map(q => ({
-      id: q.id,
-      subject: q.subject,
-      chapter: q.chapter,
-      question: q.questionText,
-      numericalValue: q.numericalValue || '',
-      tolerance: q.tolerance || '0.05',
-      difficulty: q.difficulty
-    }))
-  );
-  const [numModalOpen, setNumModalOpen] = useState(false);
-  const [numSubjectFilter, setNumSubjectFilter] = useState('');
-  const [numQuestionForm, setNumQuestionForm] = useState({
-    id: null,
-    subject: 'Physics',
-    chapter: 'Rotational Motion',
-    question: '',
-    numericalValue: '',
-    tolerance: '0.05',
-    difficulty: 'Medium'
-  });
-  const [numSearchTerm, setNumSearchTerm] = useState('');
-
-  const handleSaveNumQuestion = (e) => {
+  // Numerical Question Handlers
+  const handleSaveNumQuestion = async (e) => {
     e.preventDefault();
-    if (!numQuestionForm.question.trim()) return;
-    if (numQuestionForm.id) {
-      setNumericalQuestionList(numericalQuestionList.map(q => q.id === numQuestionForm.id ? { ...numQuestionForm } : q));
-    } else {
-      const newId = numericalQuestionList.length ? Math.max(...numericalQuestionList.map(q => q.id)) + 1 : 1;
-      setNumericalQuestionList([...numericalQuestionList, { ...numQuestionForm, id: newId }]);
+    if (!numQuestionForm.subjectId) {
+      alert('Validation Error: Subject is required.');
+      return;
     }
-    setNumQuestionForm({
-      id: null,
-      subject: 'Physics',
-      chapter: 'Rotational Motion',
-      question: '',
-      numericalValue: '',
-      tolerance: '0.05',
-      difficulty: 'Medium'
-    });
-    setNumModalOpen(false);
+    if (!numQuestionForm.chapterId) {
+      alert('Validation Error: Chapter is required.');
+      return;
+    }
+    if (!numQuestionForm.questionContent.trim()) {
+      alert('Validation Error: Question Content is required.');
+      return;
+    }
+    if (numQuestionForm.rangeFrom === undefined || String(numQuestionForm.rangeFrom).trim() === '') {
+      alert('Validation Error: Range From value is required.');
+      return;
+    }
+    if (numQuestionForm.rangeTo === undefined || String(numQuestionForm.rangeTo).trim() === '') {
+      alert('Validation Error: Range To value is required.');
+      return;
+    }
+
+    const numFrom = Number(numQuestionForm.rangeFrom);
+    const numTo = Number(numQuestionForm.rangeTo);
+    if (isNaN(numFrom) || isNaN(numTo)) {
+      alert('Validation Error: Range From and Range To must be valid numbers.');
+      return;
+    }
+    if (numFrom > numTo) {
+      alert('Validation Error: Range From cannot be greater than Range To.');
+      return;
+    }
+
+    setIsSavingNumQuestion(true);
+    try {
+      const payload = {
+        questionType: 'numerical',
+        subjectId: Number(numQuestionForm.subjectId),
+        chapterId: Number(numQuestionForm.chapterId),
+        questionContent: numQuestionForm.questionContent.trim(),
+        rangeFrom: String(numQuestionForm.rangeFrom).trim(),
+        rangeTo: String(numQuestionForm.rangeTo).trim(),
+        tolerance: String(numQuestionForm.tolerance || '0.05').trim(),
+        explanation: numQuestionForm.explanation.trim(),
+        difficulty: numQuestionForm.difficulty || 'Medium',
+        orderNumber: Number(numQuestionForm.orderNumber) || 1,
+        isActive: Boolean(numQuestionForm.isActive)
+      };
+
+      if (numQuestionForm.id) {
+        await apiUpdateQuestion(numQuestionForm.id, payload);
+        alert('Numerical Question updated successfully!');
+      } else {
+        await apiCreateQuestion(payload);
+        alert('Numerical Question created successfully in Question Bank!');
+      }
+
+      await loadQuestions();
+      setNumQuestionForm(defaultNumQuestionForm);
+      setNumEditorTab('Question');
+      setNumModalOpen(false);
+    } catch (err) {
+      alert(err.message || 'Failed to save question.');
+    } finally {
+      setIsSavingNumQuestion(false);
+    }
   };
 
   const handleEditNumQuestion = (q) => {
-    setNumQuestionForm(q);
+    setNumQuestionForm({
+      id: q.id,
+      subjectId: String(q.subjectId || ''),
+      chapterId: String(q.chapterId || ''),
+      questionContent: q.questionContent || q.question || '',
+      rangeFrom: q.rangeFrom !== undefined ? String(q.rangeFrom) : (q.numericalValue !== undefined ? String(q.numericalValue) : ''),
+      rangeTo: q.rangeTo !== undefined ? String(q.rangeTo) : (q.numericalValue !== undefined ? String(q.numericalValue) : ''),
+      tolerance: q.tolerance !== undefined ? String(q.tolerance) : '0.05',
+      explanation: q.explanation || '',
+      difficulty: q.difficulty || 'Medium',
+      orderNumber: String(q.orderNumber || '1'),
+      isActive: q.isActive !== false
+    });
+    setNumEditorTab('Question');
     setNumModalOpen(true);
   };
 
-  const handleDeleteNumQuestion = (id) => {
-    if (window.confirm('Are you sure you want to delete this numerical question?')) {
-      setNumericalQuestionList(numericalQuestionList.filter(q => q.id !== id));
+  const handleDeleteNumQuestion = async (id) => {
+    if (window.confirm('Are you sure you want to delete this numerical question from the Question Bank?')) {
+      try {
+        await apiDeleteQuestion(id);
+        await loadQuestions();
+        alert('Question deleted successfully.');
+      } catch (err) {
+        alert(err.message || 'Failed to delete question.');
+      }
     }
   };
 
@@ -3415,7 +3574,7 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
             </div>
           )}
 
-          {/* SUBMENU PAGE 3: OBJECTIVE QUESTION (MATCHING SCREENSHOT 1) */}
+          {/* SUBMENU PAGE 3: OBJECTIVE QUESTION (QUESTION BANK) */}
           {activeTab === 'Objective Question' && (
             <div className="space-y-6">
               {/* Header Title, Breadcrumb & Top-Right Add Question Button */}
@@ -3426,6 +3585,8 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                     <Home className="w-3.5 h-3.5 text-slate-400" />
                     <span>/</span>
                     <span className="text-slate-700 font-semibold">Questions</span>
+                    <span>/</span>
+                    <span className="text-slate-500">Objective Question Master</span>
                   </div>
                 </div>
 
@@ -3433,50 +3594,97 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                   onClick={() => {
                     setObjQuestionForm({
                       id: null,
-                      subject: 'Physics',
-                      chapter: 'Rotational Motion',
-                      question: '',
+                      subjectId: objSubjectFilter || (subjectList[0]?.id ? String(subjectList[0].id) : ''),
+                      chapterId: '',
+                      questionContent: '',
                       optionA: '',
                       optionB: '',
                       optionC: '',
                       optionD: '',
-                      correctOption: 'Option A',
-                      difficulty: 'Medium'
+                      correctOption: 'A',
+                      explanation: '',
+                      difficulty: 'Medium',
+                      orderNumber: '1',
+                      isActive: true
                     });
+                    setObjEditorTab('Question');
                     setObjModalOpen(true);
                   }}
-                  className="px-4 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded shadow-sm transition-colors self-start sm:self-auto"
+                  className="px-4 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded shadow-sm transition-colors self-start sm:self-auto flex items-center space-x-1.5"
                 >
-                  Add Question
+                  <span>+ Add Question</span>
                 </button>
               </div>
 
-              {/* CARD CONTAINER MATCHING SCREENSHOT 1 */}
+              {/* CARD CONTAINER WITH FILTERS */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
-                {/* SUBJECT SELECT DROPDOWN */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Subject
-                  </label>
-                  <select
-                    value={objSubjectFilter}
-                    onChange={(e) => setObjSubjectFilter(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                  >
-                    <option value="">Select Subject</option>
-                    <option value="Physics">Physics</option>
-                    <option value="Chemistry">Chemistry</option>
-                    <option value="Maths">Maths</option>
-                    <option value="LR & English">LR & English</option>
-                    <option value="Aptitude">Aptitude</option>
-                  </select>
+                {/* FILTER GRID */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* SUBJECT FILTER */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Subject
+                    </label>
+                    <select
+                      value={objSubjectFilter}
+                      onChange={(e) => {
+                        setObjSubjectFilter(e.target.value);
+                        setObjChapterFilter('');
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                    >
+                      <option value="">All Subjects</option>
+                      {subjectList.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* CHAPTER CASCADING FILTER */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Chapter
+                    </label>
+                    <select
+                      value={objChapterFilter}
+                      onChange={(e) => setObjChapterFilter(e.target.value)}
+                      disabled={!objSubjectFilter}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800 disabled:bg-slate-50 disabled:text-slate-400"
+                    >
+                      <option value="">All Chapters</option>
+                      {getChaptersForSubject(objSubjectFilter).map((ch) => (
+                        <option key={ch.id} value={ch.id}>
+                          {ch.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* DIFFICULTY FILTER */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Difficulty
+                    </label>
+                    <select
+                      value={objDifficultyFilter}
+                      onChange={(e) => setObjDifficultyFilter(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                    >
+                      <option value="">All Difficulties</option>
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                  </div>
                 </div>
 
                 {/* FULL WIDTH SEARCH INPUT WITH ATTACHED BLUE SEARCH BUTTON */}
                 <div className="relative w-full flex items-center">
                   <input
                     type="text"
-                    placeholder="Search..."
+                    placeholder="Search by question text or ID..."
                     value={objSearchTerm}
                     onChange={(e) => setObjSearchTerm(e.target.value)}
                     className="w-full pl-3 pr-10 py-2 border border-slate-200 rounded-l text-xs focus:outline-none focus:border-blue-500 text-slate-800"
@@ -3489,13 +3697,16 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                   </button>
                 </div>
 
-                {/* TABLE MATCHING SCREENSHOT 1 */}
+                {/* TABLE OF OBJECTIVE QUESTIONS */}
                 <div className="overflow-x-auto border border-slate-200 rounded">
                   <table className="w-full text-left text-xs text-slate-700">
                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[11px]">
                       <tr>
-                        <th className="p-3 border-r border-slate-200 w-3/4">QUESTIONS</th>
-                        <th className="p-3 text-center w-1/4">
+                        <th className="p-3 border-r border-slate-200 w-1/2">QUESTIONS</th>
+                        <th className="p-3 border-r border-slate-200 w-1/6">SUBJECT</th>
+                        <th className="p-3 border-r border-slate-200 w-1/6">CHAPTER</th>
+                        <th className="p-3 border-r border-slate-200 text-center w-24">DIFFICULTY</th>
+                        <th className="p-3 text-center w-24">
                           <div className="inline-flex items-center space-x-1">
                             <span>ACTION</span>
                             <span className="text-[10px] text-slate-400">⇅</span>
@@ -3505,16 +3716,50 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                     </thead>
                     <tbody className="divide-y divide-slate-200 font-medium">
                       {objectiveQuestionList
-                        .filter(q =>
-                          (!objSubjectFilter || q.subject === objSubjectFilter) &&
-                          q.question.toLowerCase().includes(objSearchTerm.toLowerCase())
-                        )
+                        .filter((q) => {
+                          if (objSubjectFilter && String(q.subjectId) !== String(objSubjectFilter)) return false;
+                          if (objChapterFilter && String(q.chapterId) !== String(objChapterFilter)) return false;
+                          if (objDifficultyFilter && q.difficulty !== objDifficultyFilter) return false;
+                          if (objSearchTerm) {
+                            const term = objSearchTerm.toLowerCase();
+                            const matchPrompt = (q.questionContent || q.question || '').toLowerCase().includes(term);
+                            const matchId = String(q.id).toLowerCase().includes(term);
+                            if (!matchPrompt && !matchId) return false;
+                          }
+                          return true;
+                        })
                         .map((q) => (
                           <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="p-3 border-r border-slate-200 text-slate-800">
-                              {q.question}
+                              <div className="flex items-start space-x-2">
+                                <span className="inline-block px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-mono shrink-0">
+                                  #{q.id}
+                                </span>
+                                <span className="line-clamp-2">
+                                  {q.questionContent || q.question}
+                                </span>
+                              </div>
                             </td>
-                            <td className="p-3 text-center space-x-2">
+                            <td className="p-3 border-r border-slate-200 text-slate-700 whitespace-nowrap">
+                              {getSubjectName(q.subjectId)}
+                            </td>
+                            <td className="p-3 border-r border-slate-200 text-slate-700 whitespace-nowrap">
+                              {getChapterName(q.chapterId)}
+                            </td>
+                            <td className="p-3 border-r border-slate-200 text-center whitespace-nowrap">
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                  q.difficulty === 'High' || q.difficulty === 'Hard'
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : q.difficulty === 'Low' || q.difficulty === 'Easy'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                }`}
+                              >
+                                {q.difficulty || 'Medium'}
+                              </span>
+                            </td>
+                            <td className="p-3 text-center space-x-2 whitespace-nowrap">
                               <button
                                 onClick={() => handleEditObjQuestion(q)}
                                 className="p-1.5 border border-slate-300 hover:border-slate-500 rounded-full text-slate-700 hover:bg-slate-100 transition-colors inline-flex items-center justify-center"
@@ -3534,17 +3779,44 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                         ))}
                     </tbody>
                   </table>
+
+                  {objectiveQuestionList.filter((q) => {
+                    if (objSubjectFilter && String(q.subjectId) !== String(objSubjectFilter)) return false;
+                    if (objChapterFilter && String(q.chapterId) !== String(objChapterFilter)) return false;
+                    if (objDifficultyFilter && q.difficulty !== objDifficultyFilter) return false;
+                    if (objSearchTerm) {
+                      const term = objSearchTerm.toLowerCase();
+                      const matchPrompt = (q.questionContent || q.question || '').toLowerCase().includes(term);
+                      const matchId = String(q.id).toLowerCase().includes(term);
+                      if (!matchPrompt && !matchId) return false;
+                    }
+                    return true;
+                  }).length === 0 && (
+                    <div className="p-8 text-center text-xs text-slate-400">
+                      No objective questions found matching your filter criteria. Click &quot;Add Question&quot; above to create one.
+                    </div>
+                  )}
                 </div>
 
-                {/* TABLE FOOTER / PAGINATION MATCHING SCREENSHOT 1 */}
+                {/* TABLE FOOTER / PAGINATION */}
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 text-xs text-slate-500">
                   <div>
-                    Showing 1 to {
-                      objectiveQuestionList.filter(q =>
-                        (!objSubjectFilter || q.subject === objSubjectFilter) &&
-                        q.question.toLowerCase().includes(objSearchTerm.toLowerCase())
-                      ).length
-                    } of {objectiveQuestionList.length} entries
+                    Showing 1 to{' '}
+                    {
+                      objectiveQuestionList.filter((q) => {
+                        if (objSubjectFilter && String(q.subjectId) !== String(objSubjectFilter)) return false;
+                        if (objChapterFilter && String(q.chapterId) !== String(objChapterFilter)) return false;
+                        if (objDifficultyFilter && q.difficulty !== objDifficultyFilter) return false;
+                        if (objSearchTerm) {
+                          const term = objSearchTerm.toLowerCase();
+                          const matchPrompt = (q.questionContent || q.question || '').toLowerCase().includes(term);
+                          const matchId = String(q.id).toLowerCase().includes(term);
+                          if (!matchPrompt && !matchId) return false;
+                        }
+                        return true;
+                      }).length
+                    }{' '}
+                    of {objectiveQuestionList.length} entries
                   </div>
 
                   <div className="flex items-center space-x-1">
@@ -3561,14 +3833,20 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                 </div>
               </div>
 
-              {/* MODAL FOR ADD / EDIT OBJECTIVE QUESTION */}
+              {/* MODAL FOR ADD / EDIT OBJECTIVE QUESTION (WITH 6 TABBED SECTIONS) */}
               {objModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                  <div className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                      <h3 className="font-bold text-slate-800 text-sm">
-                        {objQuestionForm.id ? 'Edit Objective Question' : 'Add Objective Question'}
-                      </h3>
+                  <div className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+                    {/* MODAL HEADER */}
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-sm">
+                          {objQuestionForm.id ? `Edit Objective Question #${objQuestionForm.id}` : 'Add Objective Question'}
+                        </h3>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Reusable Master Question Bank • Subject → Chapter → Objective MCQ
+                        </p>
+                      </div>
                       <button
                         onClick={() => setObjModalOpen(false)}
                         className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
@@ -3577,131 +3855,443 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                       </button>
                     </div>
 
-                    <form onSubmit={handleSaveObjQuestion} className="p-6 space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">Subject</label>
-                          <select
-                            value={objQuestionForm.subject}
-                            onChange={(e) => setObjQuestionForm({ ...objQuestionForm, subject: e.target.value })}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                          >
-                            <option value="Physics">Physics</option>
-                            <option value="Chemistry">Chemistry</option>
-                            <option value="Maths">Maths</option>
-                            <option value="LR & English">LR & English</option>
-                            <option value="Aptitude">Aptitude</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">Difficulty</label>
-                          <select
-                            value={objQuestionForm.difficulty}
-                            onChange={(e) => setObjQuestionForm({ ...objQuestionForm, difficulty: e.target.value })}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                          >
-                            <option value="Easy">Easy</option>
-                            <option value="Medium">Medium</option>
-                            <option value="Hard">Hard</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Question Prompt</label>
-                        <div className="border border-slate-200 rounded overflow-hidden bg-white">
-                          <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap items-center gap-1.5 text-slate-600">
-                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Bold"><Bold className="w-3.5 h-3.5" /></button>
-                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Italic"><Italic className="w-3.5 h-3.5" /></button>
-                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Underline"><Underline className="w-3.5 h-3.5" /></button>
-                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Code"><Code className="w-3.5 h-3.5" /></button>
-                          </div>
-                          <textarea
-                            rows={4}
-                            required
-                            placeholder="Enter question text..."
-                            value={objQuestionForm.question}
-                            onChange={(e) => setObjQuestionForm({ ...objQuestionForm, question: e.target.value })}
-                            className="w-full p-3 text-xs focus:outline-none text-slate-800 resize-y"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-medium text-slate-700 mb-1">Option A</label>
-                          <input
-                            type="text"
-                            placeholder="Enter Option A"
-                            value={objQuestionForm.optionA}
-                            onChange={(e) => setObjQuestionForm({ ...objQuestionForm, optionA: e.target.value })}
-                            className="w-full px-3 py-2 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-slate-700 mb-1">Option B</label>
-                          <input
-                            type="text"
-                            placeholder="Enter Option B"
-                            value={objQuestionForm.optionB}
-                            onChange={(e) => setObjQuestionForm({ ...objQuestionForm, optionB: e.target.value })}
-                            className="w-full px-3 py-2 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-slate-700 mb-1">Option C</label>
-                          <input
-                            type="text"
-                            placeholder="Enter Option C"
-                            value={objQuestionForm.optionC}
-                            onChange={(e) => setObjQuestionForm({ ...objQuestionForm, optionC: e.target.value })}
-                            className="w-full px-3 py-2 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-slate-700 mb-1">Option D</label>
-                          <input
-                            type="text"
-                            placeholder="Enter Option D"
-                            value={objQuestionForm.optionD}
-                            onChange={(e) => setObjQuestionForm({ ...objQuestionForm, optionD: e.target.value })}
-                            className="w-full px-3 py-2 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Correct Answer Option</label>
-                        <select
-                          value={objQuestionForm.correctOption}
-                          onChange={(e) => setObjQuestionForm({ ...objQuestionForm, correctOption: e.target.value })}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                        >
-                          <option value="Option A">Option A</option>
-                          <option value="Option B">Option B</option>
-                          <option value="Option C">Option C</option>
-                          <option value="Option D">Option D</option>
-                        </select>
-                      </div>
-
-                      <div className="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
+                    {/* TAB NAVIGATION BAR (6 TABS) */}
+                    <div className="flex border-b border-slate-200 bg-slate-50/70 px-6 pt-2 space-x-1 overflow-x-auto shrink-0">
+                      {[
+                        { id: 'Question', label: 'Question' },
+                        { id: 'Answer 1', label: 'Answer 1', isCorrect: objQuestionForm.correctOption === 'A' },
+                        { id: 'Answer 2', label: 'Answer 2', isCorrect: objQuestionForm.correctOption === 'B' },
+                        { id: 'Answer 3', label: 'Answer 3', isCorrect: objQuestionForm.correctOption === 'C' },
+                        { id: 'Answer 4', label: 'Answer 4', isCorrect: objQuestionForm.correctOption === 'D' },
+                        { id: 'Answer Explanation', label: 'Answer Explanation' }
+                      ].map((tab) => (
                         <button
+                          key={tab.id}
                           type="button"
-                          onClick={() => setObjModalOpen(false)}
-                          className="px-4 py-2 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded"
+                          onClick={() => setObjEditorTab(tab.id)}
+                          className={`px-3 py-2 text-xs font-semibold rounded-t-md transition-colors border-t border-l border-r flex items-center space-x-1.5 whitespace-nowrap ${
+                            objEditorTab === tab.id
+                              ? 'bg-white text-blue-600 border-slate-200 border-b-white -mb-px shadow-sm'
+                              : 'bg-transparent text-slate-600 border-transparent hover:text-slate-900'
+                          }`}
                         >
-                          Cancel
+                          <span>{tab.label}</span>
+                          {tab.isCorrect && (
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" title="Correct Option" />
+                          )}
                         </button>
-                        <button
-                          type="submit"
-                          className="px-5 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded shadow-sm"
-                        >
-                          {objQuestionForm.id ? 'Update Question' : 'Save Question'}
-                        </button>
+                      ))}
+                    </div>
+
+                    {/* MODAL BODY */}
+                    <form onSubmit={handleSaveObjQuestion} className="flex flex-col flex-1 overflow-hidden">
+                      <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                        {/* TAB 1: QUESTION */}
+                        {objEditorTab === 'Question' && (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                  Subject <span className="text-rose-500">*</span>
+                                </label>
+                                <select
+                                  required
+                                  value={objQuestionForm.subjectId}
+                                  onChange={(e) => {
+                                    setObjQuestionForm({
+                                      ...objQuestionForm,
+                                      subjectId: e.target.value,
+                                      chapterId: ''
+                                    });
+                                  }}
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                                >
+                                  <option value="">Select Subject</option>
+                                  {subjectList.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                      {s.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                  Chapter <span className="text-rose-500">*</span>
+                                </label>
+                                <select
+                                  required
+                                  value={objQuestionForm.chapterId}
+                                  onChange={(e) => setObjQuestionForm({ ...objQuestionForm, chapterId: e.target.value })}
+                                  disabled={!objQuestionForm.subjectId}
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800 disabled:bg-slate-50 disabled:text-slate-400"
+                                >
+                                  <option value="">
+                                    {objQuestionForm.subjectId ? 'Select Chapter' : 'Select Subject First'}
+                                  </option>
+                                  {getChaptersForSubject(objQuestionForm.subjectId).map((ch) => (
+                                    <option key={ch.id} value={ch.id}>
+                                      {ch.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                  Difficulty Level
+                                </label>
+                                <select
+                                  value={objQuestionForm.difficulty}
+                                  onChange={(e) => setObjQuestionForm({ ...objQuestionForm, difficulty: e.target.value })}
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                                >
+                                  <option value="Low">Low</option>
+                                  <option value="Medium">Medium</option>
+                                  <option value="High">High</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                  Display Order
+                                </label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={objQuestionForm.orderNumber}
+                                  onChange={(e) => setObjQuestionForm({ ...objQuestionForm, orderNumber: e.target.value })}
+                                  className="w-full px-3 py-2 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                  Status
+                                </label>
+                                <select
+                                  value={objQuestionForm.isActive ? 'true' : 'false'}
+                                  onChange={(e) => setObjQuestionForm({ ...objQuestionForm, isActive: e.target.value === 'true' })}
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                                >
+                                  <option value="true">Active (Visible)</option>
+                                  <option value="false">Inactive (Draft)</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="block text-xs font-semibold text-slate-700">
+                                  Question Prompt / Content <span className="text-rose-500">*</span>
+                                </label>
+                                <span className="text-[11px] text-slate-400">HTML & Math expressions supported</span>
+                              </div>
+                              <div className="border border-slate-200 rounded overflow-hidden bg-white">
+                                <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap items-center gap-1.5 text-slate-600 text-xs">
+                                  <button
+                                    type="button"
+                                    onClick={() => setObjQuestionForm(prev => ({ ...prev, questionContent: prev.questionContent + '<b></b>' }))}
+                                    className="px-1.5 py-1 hover:bg-slate-200 rounded font-bold"
+                                    title="Bold"
+                                  >
+                                    B
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setObjQuestionForm(prev => ({ ...prev, questionContent: prev.questionContent + '<i></i>' }))}
+                                    className="px-1.5 py-1 hover:bg-slate-200 rounded italic"
+                                    title="Italic"
+                                  >
+                                    I
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setObjQuestionForm(prev => ({ ...prev, questionContent: prev.questionContent + '<u></u>' }))}
+                                    className="px-1.5 py-1 hover:bg-slate-200 rounded underline"
+                                    title="Underline"
+                                  >
+                                    U
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setObjQuestionForm(prev => ({ ...prev, questionContent: prev.questionContent + '<code></code>' }))}
+                                    className="px-1.5 py-1 hover:bg-slate-200 rounded font-mono text-[11px]"
+                                    title="Code"
+                                  >
+                                    &lt;&gt;
+                                  </button>
+                                  <div className="h-4 w-px bg-slate-300 mx-1" />
+                                  {['√', 'π', 'θ', 'λ', 'Δ', '²', '³', '±', '≈', '≠', '∫'].map((sym) => (
+                                    <button
+                                      key={sym}
+                                      type="button"
+                                      onClick={() => setObjQuestionForm(prev => ({ ...prev, questionContent: prev.questionContent + sym }))}
+                                      className="px-1.5 py-0.5 hover:bg-slate-200 rounded text-slate-700 font-serif"
+                                      title={`Insert ${sym}`}
+                                    >
+                                      {sym}
+                                    </button>
+                                  ))}
+                                </div>
+                                <textarea
+                                  rows={5}
+                                  required
+                                  placeholder="Enter the full question text or problem statement..."
+                                  value={objQuestionForm.questionContent}
+                                  onChange={(e) => setObjQuestionForm({ ...objQuestionForm, questionContent: e.target.value })}
+                                  className="w-full p-3 text-xs focus:outline-none text-slate-800 resize-y"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* TAB 2: ANSWER 1 (OPTION A) */}
+                        {objEditorTab === 'Answer 1' && (
+                          <div className="space-y-4 bg-slate-50/50 p-4 rounded-lg border border-slate-200">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-800 text-xs flex items-center space-x-1.5">
+                                <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[11px] font-bold">
+                                  A
+                                </span>
+                                <span>Answer Option 1</span>
+                              </span>
+                              <label className="flex items-center space-x-2 cursor-pointer bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm">
+                                <input
+                                  type="radio"
+                                  name="correctOptionRadio"
+                                  checked={objQuestionForm.correctOption === 'A'}
+                                  onChange={() => setObjQuestionForm({ ...objQuestionForm, correctOption: 'A' })}
+                                  className="text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-xs font-semibold text-slate-700">
+                                  Mark as Correct Answer
+                                </span>
+                              </label>
+                            </div>
+                            <div>
+                              <textarea
+                                rows={4}
+                                required
+                                placeholder="Enter Option 1 content..."
+                                value={objQuestionForm.optionA}
+                                onChange={(e) => setObjQuestionForm({ ...objQuestionForm, optionA: e.target.value })}
+                                className="w-full p-3 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                              />
+                            </div>
+                            {objQuestionForm.correctOption === 'A' && (
+                              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded text-emerald-800 text-xs flex items-center space-x-2">
+                                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Option 1 is marked as the correct answer.</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* TAB 3: ANSWER 2 (OPTION B) */}
+                        {objEditorTab === 'Answer 2' && (
+                          <div className="space-y-4 bg-slate-50/50 p-4 rounded-lg border border-slate-200">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-800 text-xs flex items-center space-x-1.5">
+                                <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[11px] font-bold">
+                                  B
+                                </span>
+                                <span>Answer Option 2</span>
+                              </span>
+                              <label className="flex items-center space-x-2 cursor-pointer bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm">
+                                <input
+                                  type="radio"
+                                  name="correctOptionRadio"
+                                  checked={objQuestionForm.correctOption === 'B'}
+                                  onChange={() => setObjQuestionForm({ ...objQuestionForm, correctOption: 'B' })}
+                                  className="text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-xs font-semibold text-slate-700">
+                                  Mark as Correct Answer
+                                </span>
+                              </label>
+                            </div>
+                            <div>
+                              <textarea
+                                rows={4}
+                                required
+                                placeholder="Enter Option 2 content..."
+                                value={objQuestionForm.optionB}
+                                onChange={(e) => setObjQuestionForm({ ...objQuestionForm, optionB: e.target.value })}
+                                className="w-full p-3 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                              />
+                            </div>
+                            {objQuestionForm.correctOption === 'B' && (
+                              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded text-emerald-800 text-xs flex items-center space-x-2">
+                                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Option 2 is marked as the correct answer.</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* TAB 4: ANSWER 3 (OPTION C) */}
+                        {objEditorTab === 'Answer 3' && (
+                          <div className="space-y-4 bg-slate-50/50 p-4 rounded-lg border border-slate-200">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-800 text-xs flex items-center space-x-1.5">
+                                <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[11px] font-bold">
+                                  C
+                                </span>
+                                <span>Answer Option 3</span>
+                              </span>
+                              <label className="flex items-center space-x-2 cursor-pointer bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm">
+                                <input
+                                  type="radio"
+                                  name="correctOptionRadio"
+                                  checked={objQuestionForm.correctOption === 'C'}
+                                  onChange={() => setObjQuestionForm({ ...objQuestionForm, correctOption: 'C' })}
+                                  className="text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-xs font-semibold text-slate-700">
+                                  Mark as Correct Answer
+                                </span>
+                              </label>
+                            </div>
+                            <div>
+                              <textarea
+                                rows={4}
+                                required
+                                placeholder="Enter Option 3 content..."
+                                value={objQuestionForm.optionC}
+                                onChange={(e) => setObjQuestionForm({ ...objQuestionForm, optionC: e.target.value })}
+                                className="w-full p-3 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                              />
+                            </div>
+                            {objQuestionForm.correctOption === 'C' && (
+                              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded text-emerald-800 text-xs flex items-center space-x-2">
+                                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Option 3 is marked as the correct answer.</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* TAB 5: ANSWER 4 (OPTION D) */}
+                        {objEditorTab === 'Answer 4' && (
+                          <div className="space-y-4 bg-slate-50/50 p-4 rounded-lg border border-slate-200">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-800 text-xs flex items-center space-x-1.5">
+                                <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[11px] font-bold">
+                                  D
+                                </span>
+                                <span>Answer Option 4</span>
+                              </span>
+                              <label className="flex items-center space-x-2 cursor-pointer bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm">
+                                <input
+                                  type="radio"
+                                  name="correctOptionRadio"
+                                  checked={objQuestionForm.correctOption === 'D'}
+                                  onChange={() => setObjQuestionForm({ ...objQuestionForm, correctOption: 'D' })}
+                                  className="text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-xs font-semibold text-slate-700">
+                                  Mark as Correct Answer
+                                </span>
+                              </label>
+                            </div>
+                            <div>
+                              <textarea
+                                rows={4}
+                                required
+                                placeholder="Enter Option 4 content..."
+                                value={objQuestionForm.optionD}
+                                onChange={(e) => setObjQuestionForm({ ...objQuestionForm, optionD: e.target.value })}
+                                className="w-full p-3 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                              />
+                            </div>
+                            {objQuestionForm.correctOption === 'D' && (
+                              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded text-emerald-800 text-xs flex items-center space-x-2">
+                                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Option 4 is marked as the correct answer.</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* TAB 6: ANSWER EXPLANATION */}
+                        {objEditorTab === 'Answer Explanation' && (
+                          <div className="space-y-4">
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="block text-xs font-semibold text-slate-700">
+                                  Answer Explanation & Solution
+                                </label>
+                                <span className="text-[11px] text-slate-400">Displayed to students after submission</span>
+                              </div>
+                              <textarea
+                                rows={6}
+                                placeholder="Provide step-by-step mathematical reasoning, derivation, or conceptual justification..."
+                                value={objQuestionForm.explanation}
+                                onChange={(e) => setObjQuestionForm({ ...objQuestionForm, explanation: e.target.value })}
+                                className="w-full p-3 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800 resize-y"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* MODAL FOOTER */}
+                      <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
+                        {/* TAB PREV / NEXT SHORTCUTS */}
+                        <div className="flex items-center space-x-2">
+                          {objEditorTab !== 'Question' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const tabs = ['Question', 'Answer 1', 'Answer 2', 'Answer 3', 'Answer 4', 'Answer Explanation'];
+                                const currIdx = tabs.indexOf(objEditorTab);
+                                if (currIdx > 0) setObjEditorTab(tabs[currIdx - 1]);
+                              }}
+                              className="px-3 py-1.5 text-xs text-slate-600 border border-slate-200 hover:bg-slate-100 rounded"
+                            >
+                              ← Prev Tab
+                            </button>
+                          )}
+                          {objEditorTab !== 'Answer Explanation' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const tabs = ['Question', 'Answer 1', 'Answer 2', 'Answer 3', 'Answer 4', 'Answer Explanation'];
+                                const currIdx = tabs.indexOf(objEditorTab);
+                                if (currIdx < tabs.length - 1) setObjEditorTab(tabs[currIdx + 1]);
+                              }}
+                              className="px-3 py-1.5 text-xs text-slate-600 border border-slate-200 hover:bg-slate-100 rounded"
+                            >
+                              Next Tab →
+                            </button>
+                          )}
+                        </div>
+
+                        {/* CANCEL & SAVE BUTTONS */}
+                        <div className="flex items-center space-x-3">
+                          <button
+                            type="button"
+                            onClick={() => setObjModalOpen(false)}
+                            className="px-4 py-2 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={isSavingObjQuestion}
+                            className="px-5 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded shadow-sm disabled:opacity-50"
+                          >
+                            {isSavingObjQuestion
+                              ? 'Saving...'
+                              : objQuestionForm.id
+                              ? 'Update Question'
+                              : 'Save Question'}
+                          </button>
+                        </div>
                       </div>
                     </form>
                   </div>
@@ -3710,7 +4300,7 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
             </div>
           )}
 
-          {/* SUBMENU PAGE 4: NUMERICAL QUESTION (MATCHING SCREENSHOT 2) */}
+          {/* SUBMENU PAGE 4: NUMERICAL QUESTION (QUESTION BANK) */}
           {activeTab === 'Numerical Question' && (
             <div className="space-y-6">
               {/* Header Title, Breadcrumb & Top-Right Add Question Button */}
@@ -3721,6 +4311,8 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                     <Home className="w-3.5 h-3.5 text-slate-400" />
                     <span>/</span>
                     <span className="text-slate-700 font-semibold">Questions</span>
+                    <span>/</span>
+                    <span className="text-slate-500">Numerical Question Master</span>
                   </div>
                 </div>
 
@@ -3728,47 +4320,95 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                   onClick={() => {
                     setNumQuestionForm({
                       id: null,
-                      subject: 'Physics',
-                      chapter: 'Rotational Motion',
-                      question: '',
-                      numericalValue: '',
+                      subjectId: numSubjectFilter || (subjectList[0]?.id ? String(subjectList[0].id) : ''),
+                      chapterId: '',
+                      questionContent: '',
+                      rangeFrom: '',
+                      rangeTo: '',
                       tolerance: '0.05',
-                      difficulty: 'Medium'
+                      explanation: '',
+                      difficulty: 'Medium',
+                      orderNumber: '1',
+                      isActive: true
                     });
+                    setNumEditorTab('Question');
                     setNumModalOpen(true);
                   }}
-                  className="px-4 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded shadow-sm transition-colors self-start sm:self-auto"
+                  className="px-4 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded shadow-sm transition-colors self-start sm:self-auto flex items-center space-x-1.5"
                 >
-                  Add Question
+                  <span>+ Add Question</span>
                 </button>
               </div>
 
-              {/* CARD CONTAINER MATCHING SCREENSHOT 2 */}
+              {/* CARD CONTAINER WITH FILTERS */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
-                {/* SUBJECT SELECT DROPDOWN */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Subject
-                  </label>
-                  <select
-                    value={numSubjectFilter}
-                    onChange={(e) => setNumSubjectFilter(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                  >
-                    <option value="">Select Subject</option>
-                    <option value="Physics">Physics</option>
-                    <option value="Chemistry">Chemistry</option>
-                    <option value="Maths">Maths</option>
-                    <option value="LR & English">LR & English</option>
-                    <option value="Aptitude">Aptitude</option>
-                  </select>
+                {/* FILTER GRID */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* SUBJECT FILTER */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Subject
+                    </label>
+                    <select
+                      value={numSubjectFilter}
+                      onChange={(e) => {
+                        setNumSubjectFilter(e.target.value);
+                        setNumChapterFilter('');
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                    >
+                      <option value="">All Subjects</option>
+                      {subjectList.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* CHAPTER CASCADING FILTER */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Chapter
+                    </label>
+                    <select
+                      value={numChapterFilter}
+                      onChange={(e) => setNumChapterFilter(e.target.value)}
+                      disabled={!numSubjectFilter}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800 disabled:bg-slate-50 disabled:text-slate-400"
+                    >
+                      <option value="">All Chapters</option>
+                      {getChaptersForSubject(numSubjectFilter).map((ch) => (
+                        <option key={ch.id} value={ch.id}>
+                          {ch.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* DIFFICULTY FILTER */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Difficulty
+                    </label>
+                    <select
+                      value={numDifficultyFilter}
+                      onChange={(e) => setNumDifficultyFilter(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                    >
+                      <option value="">All Difficulties</option>
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                  </div>
                 </div>
 
                 {/* FULL WIDTH SEARCH INPUT WITH ATTACHED BLUE SEARCH BUTTON */}
                 <div className="relative w-full flex items-center">
                   <input
                     type="text"
-                    placeholder="Search..."
+                    placeholder="Search by question text or ID..."
                     value={numSearchTerm}
                     onChange={(e) => setNumSearchTerm(e.target.value)}
                     className="w-full pl-3 pr-10 py-2 border border-slate-200 rounded-l text-xs focus:outline-none focus:border-blue-500 text-slate-800"
@@ -3781,13 +4421,16 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                   </button>
                 </div>
 
-                {/* TABLE MATCHING SCREENSHOT 2 */}
+                {/* TABLE OF NUMERICAL QUESTIONS */}
                 <div className="overflow-x-auto border border-slate-200 rounded">
                   <table className="w-full text-left text-xs text-slate-700">
                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[11px]">
                       <tr>
-                        <th className="p-3 border-r border-slate-200 w-3/4">QUESTIONS</th>
-                        <th className="p-3 text-center w-1/4">
+                        <th className="p-3 border-r border-slate-200 w-1/2">QUESTIONS</th>
+                        <th className="p-3 border-r border-slate-200 w-1/6">SUBJECT</th>
+                        <th className="p-3 border-r border-slate-200 w-1/6">CHAPTER</th>
+                        <th className="p-3 border-r border-slate-200 text-center w-24">DIFFICULTY</th>
+                        <th className="p-3 text-center w-24">
                           <div className="inline-flex items-center space-x-1">
                             <span>ACTION</span>
                             <span className="text-[10px] text-slate-400">⇅</span>
@@ -3797,16 +4440,50 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                     </thead>
                     <tbody className="divide-y divide-slate-200 font-medium">
                       {numericalQuestionList
-                        .filter(q =>
-                          (!numSubjectFilter || q.subject === numSubjectFilter) &&
-                          q.question.toLowerCase().includes(numSearchTerm.toLowerCase())
-                        )
+                        .filter((q) => {
+                          if (numSubjectFilter && String(q.subjectId) !== String(numSubjectFilter)) return false;
+                          if (numChapterFilter && String(q.chapterId) !== String(numChapterFilter)) return false;
+                          if (numDifficultyFilter && q.difficulty !== numDifficultyFilter) return false;
+                          if (numSearchTerm) {
+                            const term = numSearchTerm.toLowerCase();
+                            const matchPrompt = (q.questionContent || q.question || '').toLowerCase().includes(term);
+                            const matchId = String(q.id).toLowerCase().includes(term);
+                            if (!matchPrompt && !matchId) return false;
+                          }
+                          return true;
+                        })
                         .map((q) => (
                           <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="p-3 border-r border-slate-200 text-slate-800">
-                              {q.question}
+                              <div className="flex items-start space-x-2">
+                                <span className="inline-block px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-mono shrink-0">
+                                  #{q.id}
+                                </span>
+                                <span className="line-clamp-2">
+                                  {q.questionContent || q.question}
+                                </span>
+                              </div>
                             </td>
-                            <td className="p-3 text-center space-x-2">
+                            <td className="p-3 border-r border-slate-200 text-slate-700 whitespace-nowrap">
+                              {getSubjectName(q.subjectId)}
+                            </td>
+                            <td className="p-3 border-r border-slate-200 text-slate-700 whitespace-nowrap">
+                              {getChapterName(q.chapterId)}
+                            </td>
+                            <td className="p-3 border-r border-slate-200 text-center whitespace-nowrap">
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                  q.difficulty === 'High' || q.difficulty === 'Hard'
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : q.difficulty === 'Low' || q.difficulty === 'Easy'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                }`}
+                              >
+                                {q.difficulty || 'Medium'}
+                              </span>
+                            </td>
+                            <td className="p-3 text-center space-x-2 whitespace-nowrap">
                               <button
                                 onClick={() => handleEditNumQuestion(q)}
                                 className="p-1.5 border border-slate-300 hover:border-slate-500 rounded-full text-slate-700 hover:bg-slate-100 transition-colors inline-flex items-center justify-center"
@@ -3826,17 +4503,44 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                         ))}
                     </tbody>
                   </table>
+
+                  {numericalQuestionList.filter((q) => {
+                    if (numSubjectFilter && String(q.subjectId) !== String(numSubjectFilter)) return false;
+                    if (numChapterFilter && String(q.chapterId) !== String(numChapterFilter)) return false;
+                    if (numDifficultyFilter && q.difficulty !== numDifficultyFilter) return false;
+                    if (numSearchTerm) {
+                      const term = numSearchTerm.toLowerCase();
+                      const matchPrompt = (q.questionContent || q.question || '').toLowerCase().includes(term);
+                      const matchId = String(q.id).toLowerCase().includes(term);
+                      if (!matchPrompt && !matchId) return false;
+                    }
+                    return true;
+                  }).length === 0 && (
+                    <div className="p-8 text-center text-xs text-slate-400">
+                      No numerical questions found matching your filter criteria. Click &quot;Add Question&quot; above to create one.
+                    </div>
+                  )}
                 </div>
 
-                {/* TABLE FOOTER / PAGINATION MATCHING SCREENSHOT 2 */}
+                {/* TABLE FOOTER / PAGINATION */}
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 text-xs text-slate-500">
                   <div>
-                    Showing 1 to {
-                      numericalQuestionList.filter(q =>
-                        (!numSubjectFilter || q.subject === numSubjectFilter) &&
-                        q.question.toLowerCase().includes(numSearchTerm.toLowerCase())
-                      ).length
-                    } of {numericalQuestionList.length} entries
+                    Showing 1 to{' '}
+                    {
+                      numericalQuestionList.filter((q) => {
+                        if (numSubjectFilter && String(q.subjectId) !== String(numSubjectFilter)) return false;
+                        if (numChapterFilter && String(q.chapterId) !== String(numChapterFilter)) return false;
+                        if (numDifficultyFilter && q.difficulty !== numDifficultyFilter) return false;
+                        if (numSearchTerm) {
+                          const term = numSearchTerm.toLowerCase();
+                          const matchPrompt = (q.questionContent || q.question || '').toLowerCase().includes(term);
+                          const matchId = String(q.id).toLowerCase().includes(term);
+                          if (!matchPrompt && !matchId) return false;
+                        }
+                        return true;
+                      }).length
+                    }{' '}
+                    of {numericalQuestionList.length} entries
                   </div>
 
                   <div className="flex items-center space-x-1">
@@ -3853,14 +4557,20 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                 </div>
               </div>
 
-              {/* MODAL FOR ADD / EDIT NUMERICAL QUESTION */}
+              {/* MODAL FOR ADD / EDIT NUMERICAL QUESTION (WITH 3 TABBED SECTIONS) */}
               {numModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                  <div className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                      <h3 className="font-bold text-slate-800 text-sm">
-                        {numQuestionForm.id ? 'Edit Numerical Question' : 'Add Numerical Question'}
-                      </h3>
+                  <div className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+                    {/* MODAL HEADER */}
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-sm">
+                          {numQuestionForm.id ? `Edit Numerical Question #${numQuestionForm.id}` : 'Add Numerical Question'}
+                        </h3>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Reusable Master Question Bank • Subject → Chapter → Numerical Value Range
+                        </p>
+                      </div>
                       <button
                         onClick={() => setNumModalOpen(false)}
                         className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
@@ -3869,95 +4579,332 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                       </button>
                     </div>
 
-                    <form onSubmit={handleSaveNumQuestion} className="p-6 space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">Subject</label>
-                          <select
-                            value={numQuestionForm.subject}
-                            onChange={(e) => setNumQuestionForm({ ...numQuestionForm, subject: e.target.value })}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                          >
-                            <option value="Physics">Physics</option>
-                            <option value="Chemistry">Chemistry</option>
-                            <option value="Maths">Maths</option>
-                            <option value="LR & English">LR & English</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">Difficulty</label>
-                          <select
-                            value={numQuestionForm.difficulty}
-                            onChange={(e) => setNumQuestionForm({ ...numQuestionForm, difficulty: e.target.value })}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                          >
-                            <option value="Easy">Easy</option>
-                            <option value="Medium">Medium</option>
-                            <option value="Hard">Hard</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Question Prompt</label>
-                        <div className="border border-slate-200 rounded overflow-hidden bg-white">
-                          <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap items-center gap-1.5 text-slate-600">
-                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Bold"><Bold className="w-3.5 h-3.5" /></button>
-                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Italic"><Italic className="w-3.5 h-3.5" /></button>
-                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Underline"><Underline className="w-3.5 h-3.5" /></button>
-                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Code"><Code className="w-3.5 h-3.5" /></button>
-                          </div>
-                          <textarea
-                            rows={4}
-                            required
-                            placeholder="Enter numerical question prompt..."
-                            value={numQuestionForm.question}
-                            onChange={(e) => setNumQuestionForm({ ...numQuestionForm, question: e.target.value })}
-                            className="w-full p-3 text-xs focus:outline-none text-slate-800 resize-y"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">Numerical Answer Value</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="e.g. 14.50"
-                            value={numQuestionForm.numericalValue}
-                            onChange={(e) => setNumQuestionForm({ ...numQuestionForm, numericalValue: e.target.value })}
-                            className="w-full px-3 py-2 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">Tolerance Range (+/-)</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. 0.05"
-                            value={numQuestionForm.tolerance}
-                            onChange={(e) => setNumQuestionForm({ ...numQuestionForm, tolerance: e.target.value })}
-                            className="w-full px-3 py-2 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
+                    {/* TAB NAVIGATION BAR (3 TABS) */}
+                    <div className="flex border-b border-slate-200 bg-slate-50/70 px-6 pt-2 space-x-1 overflow-x-auto shrink-0">
+                      {[
+                        { id: 'Question', label: 'Question' },
+                        { id: 'Answer', label: 'Answer (Range From & To)' },
+                        { id: 'Answer Explanation', label: 'Answer Explanation' }
+                      ].map((tab) => (
                         <button
+                          key={tab.id}
                           type="button"
-                          onClick={() => setNumModalOpen(false)}
-                          className="px-4 py-2 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded"
+                          onClick={() => setNumEditorTab(tab.id)}
+                          className={`px-3 py-2 text-xs font-semibold rounded-t-md transition-colors border-t border-l border-r whitespace-nowrap ${
+                            numEditorTab === tab.id
+                              ? 'bg-white text-blue-600 border-slate-200 border-b-white -mb-px shadow-sm'
+                              : 'bg-transparent text-slate-600 border-transparent hover:text-slate-900'
+                          }`}
                         >
-                          Cancel
+                          {tab.label}
                         </button>
-                        <button
-                          type="submit"
-                          className="px-5 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded shadow-sm"
-                        >
-                          {numQuestionForm.id ? 'Update Question' : 'Save Question'}
-                        </button>
+                      ))}
+                    </div>
+
+                    {/* MODAL BODY */}
+                    <form onSubmit={handleSaveNumQuestion} className="flex flex-col flex-1 overflow-hidden">
+                      <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                        {/* TAB 1: QUESTION */}
+                        {numEditorTab === 'Question' && (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                  Subject <span className="text-rose-500">*</span>
+                                </label>
+                                <select
+                                  required
+                                  value={numQuestionForm.subjectId}
+                                  onChange={(e) => {
+                                    setNumQuestionForm({
+                                      ...numQuestionForm,
+                                      subjectId: e.target.value,
+                                      chapterId: ''
+                                    });
+                                  }}
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                                >
+                                  <option value="">Select Subject</option>
+                                  {subjectList.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                      {s.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                  Chapter <span className="text-rose-500">*</span>
+                                </label>
+                                <select
+                                  required
+                                  value={numQuestionForm.chapterId}
+                                  onChange={(e) => setNumQuestionForm({ ...numQuestionForm, chapterId: e.target.value })}
+                                  disabled={!numQuestionForm.subjectId}
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800 disabled:bg-slate-50 disabled:text-slate-400"
+                                >
+                                  <option value="">
+                                    {numQuestionForm.subjectId ? 'Select Chapter' : 'Select Subject First'}
+                                  </option>
+                                  {getChaptersForSubject(numQuestionForm.subjectId).map((ch) => (
+                                    <option key={ch.id} value={ch.id}>
+                                      {ch.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                  Difficulty Level
+                                </label>
+                                <select
+                                  value={numQuestionForm.difficulty}
+                                  onChange={(e) => setNumQuestionForm({ ...numQuestionForm, difficulty: e.target.value })}
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                                >
+                                  <option value="Low">Low</option>
+                                  <option value="Medium">Medium</option>
+                                  <option value="High">High</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                  Display Order
+                                </label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={numQuestionForm.orderNumber}
+                                  onChange={(e) => setNumQuestionForm({ ...numQuestionForm, orderNumber: e.target.value })}
+                                  className="w-full px-3 py-2 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                  Status
+                                </label>
+                                <select
+                                  value={numQuestionForm.isActive ? 'true' : 'false'}
+                                  onChange={(e) => setNumQuestionForm({ ...numQuestionForm, isActive: e.target.value === 'true' })}
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                                >
+                                  <option value="true">Active (Visible)</option>
+                                  <option value="false">Inactive (Draft)</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="block text-xs font-semibold text-slate-700">
+                                  Question Prompt / Numerical Problem <span className="text-rose-500">*</span>
+                                </label>
+                                <span className="text-[11px] text-slate-400">HTML & Math expressions supported</span>
+                              </div>
+                              <div className="border border-slate-200 rounded overflow-hidden bg-white">
+                                <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap items-center gap-1.5 text-slate-600 text-xs">
+                                  <button
+                                    type="button"
+                                    onClick={() => setNumQuestionForm(prev => ({ ...prev, questionContent: prev.questionContent + '<b></b>' }))}
+                                    className="px-1.5 py-1 hover:bg-slate-200 rounded font-bold"
+                                    title="Bold"
+                                  >
+                                    B
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setNumQuestionForm(prev => ({ ...prev, questionContent: prev.questionContent + '<i></i>' }))}
+                                    className="px-1.5 py-1 hover:bg-slate-200 rounded italic"
+                                    title="Italic"
+                                  >
+                                    I
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setNumQuestionForm(prev => ({ ...prev, questionContent: prev.questionContent + '<u></u>' }))}
+                                    className="px-1.5 py-1 hover:bg-slate-200 rounded underline"
+                                    title="Underline"
+                                  >
+                                    U
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setNumQuestionForm(prev => ({ ...prev, questionContent: prev.questionContent + '<code></code>' }))}
+                                    className="px-1.5 py-1 hover:bg-slate-200 rounded font-mono text-[11px]"
+                                    title="Code"
+                                  >
+                                    &lt;&gt;
+                                  </button>
+                                  <div className="h-4 w-px bg-slate-300 mx-1" />
+                                  {['√', 'π', 'θ', 'λ', 'Δ', '²', '³', '±', '≈', '≠', '∫'].map((sym) => (
+                                    <button
+                                      key={sym}
+                                      type="button"
+                                      onClick={() => setNumQuestionForm(prev => ({ ...prev, questionContent: prev.questionContent + sym }))}
+                                      className="px-1.5 py-0.5 hover:bg-slate-200 rounded text-slate-700 font-serif"
+                                      title={`Insert ${sym}`}
+                                    >
+                                      {sym}
+                                    </button>
+                                  ))}
+                                </div>
+                                <textarea
+                                  rows={5}
+                                  required
+                                  placeholder="Enter the numerical problem statement and unit requirements..."
+                                  value={numQuestionForm.questionContent}
+                                  onChange={(e) => setNumQuestionForm({ ...numQuestionForm, questionContent: e.target.value })}
+                                  className="w-full p-3 text-xs focus:outline-none text-slate-800 resize-y"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* TAB 2: ANSWER (RANGE FROM & RANGE TO) */}
+                        {numEditorTab === 'Answer' && (
+                          <div className="space-y-4 bg-slate-50/50 p-5 rounded-lg border border-slate-200">
+                            <div>
+                              <h4 className="font-bold text-slate-800 text-xs mb-1">
+                                Numerical Answer Value Range
+                              </h4>
+                              <p className="text-[11px] text-slate-500">
+                                Specify the acceptable inclusive numerical value range. For exact single-value answers, set both <b>Range From</b> and <b>Range To</b> to the same number (e.g. 14.5 to 14.5). Both negative and decimal values are fully supported.
+                              </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                  Range From (Inclusive Lower Bound) <span className="text-rose-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="e.g. 14.50 or -5.25"
+                                  value={numQuestionForm.rangeFrom}
+                                  onChange={(e) => setNumQuestionForm({ ...numQuestionForm, rangeFrom: e.target.value })}
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800 font-mono"
+                                />
+                                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                                  Supports negative and decimal numbers
+                                </span>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                  Range To (Inclusive Upper Bound) <span className="text-rose-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="e.g. 14.50 or -5.20"
+                                  value={numQuestionForm.rangeTo}
+                                  onChange={(e) => setNumQuestionForm({ ...numQuestionForm, rangeTo: e.target.value })}
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800 font-mono"
+                                />
+                                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                                  Must be greater than or equal to Range From
+                                </span>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                Tolerance Precision (+/-)
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. 0.05"
+                                value={numQuestionForm.tolerance}
+                                onChange={(e) => setNumQuestionForm({ ...numQuestionForm, tolerance: e.target.value })}
+                                className="w-full max-w-xs px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800 font-mono"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* TAB 3: ANSWER EXPLANATION */}
+                        {numEditorTab === 'Answer Explanation' && (
+                          <div className="space-y-4">
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="block text-xs font-semibold text-slate-700">
+                                  Answer Explanation & Calculation Steps
+                                </label>
+                                <span className="text-[11px] text-slate-400">Displayed to students after submission</span>
+                              </div>
+                              <textarea
+                                rows={6}
+                                placeholder="Provide the complete mathematical derivation, formulas used, calculation steps, and final value..."
+                                value={numQuestionForm.explanation}
+                                onChange={(e) => setNumQuestionForm({ ...numQuestionForm, explanation: e.target.value })}
+                                className="w-full p-3 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800 resize-y"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* MODAL FOOTER */}
+                      <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
+                        {/* TAB PREV / NEXT SHORTCUTS */}
+                        <div className="flex items-center space-x-2">
+                          {numEditorTab !== 'Question' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const tabs = ['Question', 'Answer', 'Answer Explanation'];
+                                const currIdx = tabs.indexOf(numEditorTab);
+                                if (currIdx > 0) setNumEditorTab(tabs[currIdx - 1]);
+                              }}
+                              className="px-3 py-1.5 text-xs text-slate-600 border border-slate-200 hover:bg-slate-100 rounded"
+                            >
+                              ← Prev Tab
+                            </button>
+                          )}
+                          {numEditorTab !== 'Answer Explanation' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const tabs = ['Question', 'Answer', 'Answer Explanation'];
+                                const currIdx = tabs.indexOf(numEditorTab);
+                                if (currIdx < tabs.length - 1) setNumEditorTab(tabs[currIdx + 1]);
+                              }}
+                              className="px-3 py-1.5 text-xs text-slate-600 border border-slate-200 hover:bg-slate-100 rounded"
+                            >
+                              Next Tab →
+                            </button>
+                          )}
+                        </div>
+
+                        {/* CANCEL & SAVE BUTTONS */}
+                        <div className="flex items-center space-x-3">
+                          <button
+                            type="button"
+                            onClick={() => setNumModalOpen(false)}
+                            className="px-4 py-2 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={isSavingNumQuestion}
+                            className="px-5 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded shadow-sm disabled:opacity-50"
+                          >
+                            {isSavingNumQuestion
+                              ? 'Saving...'
+                              : numQuestionForm.id
+                              ? 'Update Question'
+                              : 'Save Question'}
+                          </button>
+                        </div>
                       </div>
                     </form>
                   </div>
