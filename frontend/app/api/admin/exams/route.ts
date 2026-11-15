@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     // Identify user from header or payload for audit trail
     const adminUser = req.headers.get('x-admin-user') || body.adminUser || 'Administrator';
 
-    const result = createExam(body, adminUser);
+    const result = await createExam(body, adminUser);
 
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error }, { status: 400 });

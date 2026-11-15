@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminCourses, createCourse } from '@/lib/db/courses';
+import { assignSubjectsToCourse } from '@/lib/db/subjects';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,10 +33,15 @@ export async function POST(req: NextRequest) {
     // Identify user from header or payload
     const adminUser = req.headers.get('x-admin-user') || body.adminUser || 'Administrator';
 
-    const result = createCourse(body, adminUser);
+    const result = await createCourse(body, adminUser);
 
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+    }
+
+    // Persist Course-Subject many-to-many relationships if subjectIds passed
+    if (result.course && Array.isArray(body.subjectIds)) {
+      await assignSubjectsToCourse(result.course.id, body.subjectIds);
     }
 
     return NextResponse.json({

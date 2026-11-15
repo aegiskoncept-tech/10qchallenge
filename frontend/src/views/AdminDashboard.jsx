@@ -62,6 +62,9 @@ import {
 import CourseContentAssignmentView from '@/components/admin/CourseContentAssignment';
 import { coursesData as initialCourses, getStoredCourses, saveStoredCourses, fetchAdminCourses, apiCreateCourse, apiUpdateCourse, apiDeleteCourse, apiUploadFile } from '../data/courses';
 import { getStoredExams, saveStoredExams, fetchAdminExams, fetchServerExams, apiCreateExam, apiUpdateExam, apiDeleteExam } from '../data/exams';
+import { getStoredSubjects, saveStoredSubjects, fetchAdminSubjects, fetchServerSubjects, apiCreateSubject, apiUpdateSubject, apiDeleteSubject, fetchCourseSubjects, apiAssignCourseSubjects } from '../data/subjects';
+import { fetchAdminChapters, apiCreateChapter, apiUpdateChapter, apiDeleteChapter } from '../data/chapters';
+import { fetchAdminTopics, apiCreateTopic, apiUpdateTopic, apiDeleteTopic } from '../data/topics';
 import { blogsData as initialBlogs } from '../data/blogs';
 import { MASTER_QUESTION_BANK, SUBJECT_MASTER_LIST, CHAPTER_MASTER_LIST } from '../data/questionBank';
 
@@ -223,136 +226,425 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
     }
   };
 
-  // 2. SUBJECT MASTER STATE
-  const [subjectList, setSubjectList] = useState([
-    { id: 1, subjectCode: '101', subjectName: 'Physics' },
-    { id: 2, subjectCode: '201', subjectName: 'Chemistry' },
-    { id: 3, subjectCode: '301', subjectName: 'Maths' },
-    { id: 4, subjectCode: '204', subjectName: 'LR & English' },
-    { id: 5, subjectCode: '302', subjectName: 'Aptitude' },
-    { id: 6, subjectCode: '102', subjectName: 'Bonus Questions' },
-    { id: 7, subjectCode: '402', subjectName: 'Mock Tests' },
-    { id: 8, subjectCode: '205', subjectName: 'All Subjects' }
-  ]);
-  const [subjectForm, setSubjectForm] = useState({ id: null, subjectCode: '', subjectName: '' });
+  // 2. SUBJECT MASTER STATE (Centralized & Database Persistent)
+  const [subjectList, setSubjectList] = useState(() => {
+    const cached = getStoredSubjects();
+    return Array.isArray(cached) && cached.length > 0 ? cached : [];
+  });
+  const [subjectForm, setSubjectForm] = useState({
+    id: null,
+    subjectCode: '',
+    subjectName: '',
+    description: '',
+    displayIndex: '1',
+    isActive: true,
+  });
   const [subjectSearchTerm, setSubjectSearchTerm] = useState('');
+  const [subjectStatusFilter, setSubjectStatusFilter] = useState('All');
+  const [isSavingSubject, setIsSavingSubject] = useState(false);
+  const [viewingAssignedSubject, setViewingAssignedSubject] = useState(null);
 
-  const handleSaveSubject = (e) => {
-    e.preventDefault();
-    if (!subjectForm.subjectCode.trim() || !subjectForm.subjectName.trim()) return;
-    if (subjectForm.id) {
-      setSubjectList(subjectList.map(s => s.id === subjectForm.id ? { ...subjectForm } : s));
-    } else {
-      const newId = subjectList.length ? Math.max(...subjectList.map(s => s.id)) + 1 : 1;
-      setSubjectList([...subjectList, { ...subjectForm, id: newId }]);
+  // Synchronize subjects from central server database
+  const loadSubjects = async (term = '') => {
+    try {
+      const data = await fetchAdminSubjects(term);
+      if (Array.isArray(data)) {
+        setSubjectList(data);
+      }
+    } catch (err) {
+      console.warn('[Subject Master] Failed to fetch server subjects:', err);
     }
-    setSubjectForm({ id: null, subjectCode: '', subjectName: '' });
+  };
+
+  useEffect(() => {
+    loadSubjects();
+
+    const handleSubjectUpdate = () => {
+      loadSubjects();
+    };
+
+    window.addEventListener('10q_subjects_updated', handleSubjectUpdate);
+    window.addEventListener('storage', handleSubjectUpdate);
+
+    return () => {
+      window.removeEventListener('10q_subjects_updated', handleSubjectUpdate);
+      window.removeEventListener('storage', handleSubjectUpdate);
+    };
+  }, []);
+
+  const handleSaveSubject = async (e) => {
+    e.preventDefault();
+    if (!subjectForm.subjectCode?.trim()) {
+      alert('Subject Code is required.');
+      return;
+    }
+    if (!subjectForm.subjectName?.trim()) {
+      alert('Subject Name is required.');
+      return;
+    }
+
+    setIsSavingSubject(true);
+
+    try {
+      const payload = {
+        subjectCode: subjectForm.subjectCode.trim(),
+        subjectName: subjectForm.subjectName.trim(),
+        description: subjectForm.description?.trim() || '',
+        displayIndex: Number(subjectForm.displayIndex) || 1,
+        isActive: subjectForm.isActive !== undefined ? Boolean(subjectForm.isActive) : true,
+      };
+
+      if (subjectForm.id) {
+        await apiUpdateSubject(subjectForm.id, payload);
+        alert('Subject updated successfully in Subject Master!');
+      } else {
+        await apiCreateSubject(payload);
+        alert('Subject created and registered successfully in Subject Master!');
+      }
+
+      await loadSubjects();
+      setSubjectForm({ id: null, subjectCode: '', subjectName: '', description: '', displayIndex: '1', isActive: true });
+    } catch (err) {
+      console.error('[Subject Save Error]', err);
+      alert(err.message || 'Failed to save subject.');
+    } finally {
+      setIsSavingSubject(false);
+    }
   };
 
   const handleEditSubject = (subject) => {
-    setSubjectForm(subject);
+    setSubjectForm({
+      id: subject.id,
+      subjectCode: subject.subjectCode || '',
+      subjectName: subject.subjectName || '',
+      description: subject.description || '',
+      displayIndex: String(subject.displayIndex || subject.id),
+      isActive: subject.isActive !== false,
+    });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDeleteSubject = (id) => {
-    if (window.confirm('Delete this subject?')) {
-      setSubjectList(subjectList.filter(s => s.id !== id));
+  const handleToggleSubjectStatus = async (subject) => {
+    try {
+      await apiUpdateSubject(subject.id, { isActive: !subject.isActive });
+      await loadSubjects();
+    } catch (err) {
+      alert(err.message || 'Failed to update subject status.');
+    }
+  };
+
+  const handleDeleteSubject = async (subject) => {
+    if (subject.associatedCoursesCount > 0) {
+      const courseNames = (subject.associatedCourses || []).map((c) => `• ${c.title}`).join('\n');
+      alert(
+        `Cannot delete subject '${subject.subjectName}'.\n\nIt is currently assigned to ${subject.associatedCoursesCount} course(s):\n${courseNames}\n\nPlease remove this subject from the assigned courses or deactivate the subject instead.`
+      );
+      return;
+    }
+
+    if (
+      window.confirm(
+        `Are you sure you want to permanently delete '${subject.subjectName}' (${subject.subjectCode})? This action cannot be undone.`
+      )
+    ) {
+      try {
+        await apiDeleteSubject(subject.id);
+        await loadSubjects();
+        alert('Subject successfully removed from master catalogue.');
+      } catch (err) {
+        alert(err.message || 'Failed to delete subject.');
+      }
     }
   };
 
   // 3. CHAPTER MASTER TABBED STATE
-  const [chapterActiveTab, setChapterActiveTab] = useState('Basic Information');
+  const [chapterActiveTab, setChapterActiveTab] = useState('Table'); // 'Basic Information' or 'Table'
   const [chapterList, setChapterList] = useState([]);
-
-  const [chapterForm, setChapterForm] = useState({
-    id: null,
-    subject: '',
-    chapterName: '',
-    description: '',
-    orderNumber: '',
-    enabled: true
-  });
+  const [chapterLoading, setChapterLoading] = useState(false);
+  const [chapterSaving, setChapterSaving] = useState(false);
+  const [chapterCourseFilter, setChapterCourseFilter] = useState('');
+  const [chapterSubjectFilter, setChapterSubjectFilter] = useState('');
+  const [chapterStatusFilter, setChapterStatusFilter] = useState('ALL');
   const [chapterSearchTerm, setChapterSearchTerm] = useState('');
 
-  const handleSaveChapter = (e) => {
-    e.preventDefault();
-    if (!chapterForm.chapterName.trim()) return;
+  const defaultChapterForm = {
+    id: null,
+    courseId: '',
+    subjectId: '',
+    chapterName: '',
+    chapterCode: '',
+    description: '',
+    displayOrder: '1',
+    isActive: true
+  };
 
-    if (chapterForm.id) {
-      setChapterList(chapterList.map(c => c.id === chapterForm.id ? { ...chapterForm } : c));
-    } else {
-      const newId = chapterList.length ? Math.max(...chapterList.map(c => c.id)) + 1 : 1;
-      setChapterList([...chapterList, { ...chapterForm, id: newId }]);
+  const [chapterForm, setChapterForm] = useState(defaultChapterForm);
+
+  const loadChapters = async () => {
+    setChapterLoading(true);
+    try {
+      const data = await fetchAdminChapters();
+      if (Array.isArray(data)) {
+        setChapterList(data);
+      }
+    } catch (err) {
+      console.error('[Chapter Load Error]', err);
+    } finally {
+      setChapterLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadChapters();
+  }, []);
+
+  // Helper to determine subjects available for a selected course
+  const getAssignedSubjectsForCourse = (cId) => {
+    if (!cId) return [];
+    const course = courseList.find(c => Number(c.id) === Number(cId));
+    if (!course) return [];
+    if (Array.isArray(course.subjectIds) && course.subjectIds.length > 0) {
+      return subjects.filter(s => course.subjectIds.includes(Number(s.id)));
+    }
+    return subjects.filter(s => s.isActive !== false);
+  };
+
+  const handleChapterCourseChange = (newCourseId) => {
+    const allowed = getAssignedSubjectsForCourse(newCourseId);
+    const isStillValid = allowed.some(s => String(s.id) === String(chapterForm.subjectId));
+    setChapterForm({
+      ...chapterForm,
+      courseId: newCourseId,
+      subjectId: isStillValid ? chapterForm.subjectId : (allowed.length > 0 ? String(allowed[0].id) : '')
+    });
+  };
+
+  const handleSaveChapter = async (e) => {
+    e.preventDefault();
+    if (!chapterForm.courseId) {
+      alert('Validation Error: Please select a Course.');
+      return;
+    }
+    if (!chapterForm.subjectId) {
+      alert('Validation Error: Please select a Subject assigned to this course.');
+      return;
+    }
+    if (!chapterForm.chapterName.trim()) {
+      alert('Validation Error: Chapter Name is required.');
+      return;
     }
 
-    setChapterForm({ id: null, subject: '', chapterName: '', description: '', orderNumber: '', enabled: true });
-    setChapterActiveTab('Table');
+    setChapterSaving(true);
+    try {
+      const payload = {
+        courseId: Number(chapterForm.courseId),
+        subjectId: Number(chapterForm.subjectId),
+        chapterName: chapterForm.chapterName.trim(),
+        chapterCode: chapterForm.chapterCode.trim() || undefined,
+        description: chapterForm.description.trim(),
+        displayOrder: Number(chapterForm.displayOrder) || 1,
+        isActive: Boolean(chapterForm.isActive)
+      };
+
+      if (chapterForm.id) {
+        await apiUpdateChapter(chapterForm.id, payload);
+        alert('Chapter updated successfully!');
+      } else {
+        await apiCreateChapter(payload);
+        alert('Chapter created successfully!');
+      }
+
+      await loadChapters();
+      setChapterForm(defaultChapterForm);
+      setChapterActiveTab('Table');
+    } catch (err) {
+      alert(err.message || 'Failed to save chapter.');
+    } finally {
+      setChapterSaving(false);
+    }
   };
 
   const handleEditChapter = (chapter) => {
     setChapterForm({
       id: chapter.id,
-      subject: chapter.subject || 'Physics',
+      courseId: String(chapter.courseId || ''),
+      subjectId: String(chapter.subjectId || ''),
       chapterName: chapter.chapterName || '',
+      chapterCode: chapter.chapterCode || '',
       description: chapter.description || '',
-      orderNumber: chapter.orderNumber || '1',
-      enabled: chapter.enabled !== undefined ? chapter.enabled : true
+      displayOrder: String(chapter.displayOrder || '1'),
+      isActive: chapter.isActive !== false
     });
     setChapterActiveTab('Basic Information');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDeleteChapter = (id) => {
-    if (window.confirm('Are you sure you want to delete this chapter?')) {
-      setChapterList(chapterList.filter(c => c.id !== id));
+  const handleDeleteChapter = async (id, chapterName) => {
+    if (window.confirm(`Are you sure you want to delete chapter "${chapterName || id}"? This action cannot be undone.`)) {
+      try {
+        await apiDeleteChapter(id);
+        await loadChapters();
+        alert('Chapter deleted successfully.');
+      } catch (err) {
+        alert(err.message || 'Failed to delete chapter.');
+      }
     }
   };
 
-  // 4. CHAPTER TOPIC MASTER TABBED STATE (Matching Screenshots 1 & 2)
-  const [topicActiveTab, setTopicActiveTab] = useState('Basic Information'); // 'Basic Information' or 'Table'
-  const [topicList, setTopicList] = useState([]);
+  const handleToggleChapterStatus = async (chapter) => {
+    try {
+      await apiUpdateChapter(chapter.id, { isActive: !chapter.isActive });
+      await loadChapters();
+    } catch (err) {
+      alert(err.message || 'Failed to toggle chapter status.');
+    }
+  };
 
-  const [topicForm, setTopicForm] = useState({
-    id: null,
-    subject: '',
-    chapter: '',
-    topicName: '',
-    description: '',
-    orderNumber: '',
-    enabled: true
-  });
+  // 4. CHAPTER TOPIC MASTER TABBED STATE
+  const [topicActiveTab, setTopicActiveTab] = useState('Table'); // 'Basic Information' or 'Table'
+  const [topicList, setTopicList] = useState([]);
+  const [topicLoading, setTopicLoading] = useState(false);
+  const [topicSaving, setTopicSaving] = useState(false);
+  const [topicCourseFilter, setTopicCourseFilter] = useState('');
+  const [topicSubjectFilter, setTopicSubjectFilter] = useState('');
+  const [topicChapterFilter, setTopicChapterFilter] = useState('');
+  const [topicStatusFilter, setTopicStatusFilter] = useState('ALL');
   const [topicSearchTerm, setTopicSearchTerm] = useState('');
 
-  const handleSaveTopic = (e) => {
-    e.preventDefault();
-    if (!topicForm.topicName.trim()) return;
+  const defaultTopicForm = {
+    id: null,
+    courseId: '',
+    subjectId: '',
+    chapterId: '',
+    topicName: '',
+    topicCode: '',
+    description: '',
+    displayOrder: '1',
+    isActive: true
+  };
 
-    if (topicForm.id) {
-      setTopicList(topicList.map(t => t.id === topicForm.id ? { ...topicForm } : t));
-    } else {
-      const newId = topicList.length ? Math.max(...topicList.map(t => t.id)) + 1 : 1;
-      setTopicList([...topicList, { ...topicForm, id: newId }]);
+  const [topicForm, setTopicForm] = useState(defaultTopicForm);
+
+  const loadTopics = async () => {
+    setTopicLoading(true);
+    try {
+      const data = await fetchAdminTopics();
+      if (Array.isArray(data)) {
+        setTopicList(data);
+      }
+    } catch (err) {
+      console.error('[Topic Load Error]', err);
+    } finally {
+      setTopicLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTopics();
+  }, []);
+
+  // Cascading helpers for Topic Form
+  const handleTopicCourseChange = (newCourseId) => {
+    setTopicForm({
+      ...topicForm,
+      courseId: newCourseId,
+      subjectId: '',
+      chapterId: ''
+    });
+  };
+
+  const handleTopicSubjectChange = (newSubjectId) => {
+    setTopicForm({
+      ...topicForm,
+      subjectId: newSubjectId,
+      chapterId: ''
+    });
+  };
+
+  const handleSaveTopic = async (e) => {
+    e.preventDefault();
+    if (!topicForm.courseId) {
+      alert('Validation Error: Please select a Course.');
+      return;
+    }
+    if (!topicForm.subjectId) {
+      alert('Validation Error: Please select a Subject.');
+      return;
+    }
+    if (!topicForm.chapterId) {
+      alert('Validation Error: Please select a Chapter.');
+      return;
+    }
+    if (!topicForm.topicName.trim()) {
+      alert('Validation Error: Topic Name is required.');
+      return;
     }
 
-    setTopicForm({ id: null, subject: '', chapter: '', topicName: '', description: '', orderNumber: '', enabled: true });
-    setTopicActiveTab('Table'); // Auto switch to table tab after save
+    setTopicSaving(true);
+    try {
+      const payload = {
+        courseId: Number(topicForm.courseId),
+        subjectId: Number(topicForm.subjectId),
+        chapterId: Number(topicForm.chapterId),
+        topicName: topicForm.topicName.trim(),
+        topicCode: topicForm.topicCode.trim() || undefined,
+        description: topicForm.description.trim(),
+        displayOrder: Number(topicForm.displayOrder) || 1,
+        isActive: Boolean(topicForm.isActive)
+      };
+
+      if (topicForm.id) {
+        await apiUpdateTopic(topicForm.id, payload);
+        alert('Topic updated successfully!');
+      } else {
+        await apiCreateTopic(payload);
+        alert('Topic created successfully!');
+      }
+
+      await loadTopics();
+      setTopicForm(defaultTopicForm);
+      setTopicActiveTab('Table');
+    } catch (err) {
+      alert(err.message || 'Failed to save topic.');
+    } finally {
+      setTopicSaving(false);
+    }
   };
 
   const handleEditTopic = (topic) => {
     setTopicForm({
       id: topic.id,
-      subject: topic.subject || '',
-      chapter: topic.chapter || '',
+      courseId: String(topic.courseId || ''),
+      subjectId: String(topic.subjectId || ''),
+      chapterId: String(topic.chapterId || ''),
       topicName: topic.topicName || '',
+      topicCode: topic.topicCode || '',
       description: topic.description || '',
-      orderNumber: topic.orderNumber || '1',
-      enabled: topic.enabled !== undefined ? topic.enabled : true
+      displayOrder: String(topic.displayOrder || '1'),
+      isActive: topic.isActive !== false
     });
-    setTopicActiveTab('Basic Information'); // Auto switch to form tab for edit
+    setTopicActiveTab('Basic Information');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDeleteTopic = (id) => {
-    if (window.confirm('Are you sure you want to delete this chapter topic?')) {
-      setTopicList(topicList.filter(t => t.id !== id));
+  const handleDeleteTopic = async (id, topicName) => {
+    if (window.confirm(`Are you sure you want to delete topic "${topicName || id}"? This action cannot be undone.`)) {
+      try {
+        await apiDeleteTopic(id);
+        await loadTopics();
+        alert('Topic deleted successfully.');
+      } catch (err) {
+        alert(err.message || 'Failed to delete topic.');
+      }
+    }
+  };
+
+  const handleToggleTopicStatus = async (topic) => {
+    try {
+      await apiUpdateTopic(topic.id, { isActive: !topic.isActive });
+      await loadTopics();
+    } catch (err) {
+      alert(err.message || 'Failed to toggle topic status.');
     }
   };
 
@@ -525,7 +817,8 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
     isActive: true,
     isShowInMentorship: false,
     isShowInTestSeries: false,
-    mentor: 'Harshal Jain'
+    mentor: 'Harshal Jain',
+    selectedSubjectIds: []
   };
 
   const [courseForm, setCourseForm] = useState(defaultCourseForm);
@@ -565,6 +858,7 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
       const payload = {
         ...courseForm,
         examId: matchedExam ? matchedExam.id : (courseForm.examId || undefined),
+        subjectIds: Array.isArray(courseForm.selectedSubjectIds) ? courseForm.selectedSubjectIds : [],
         slug: autoSlug,
         price: priceFormatted,
         discountedPrice: priceFormatted,
@@ -605,8 +899,21 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
     }
   };
 
-  const handleEditCourse = (course) => {
-    setCourseForm({ ...defaultCourseForm, ...course });
+  const handleEditCourse = async (course) => {
+    let assignedSubjectIds = Array.isArray(course.subjectIds) ? course.subjectIds : [];
+    if (assignedSubjectIds.length === 0 && course.id) {
+      try {
+        const fetchedSubs = await fetchCourseSubjects(course.id);
+        if (Array.isArray(fetchedSubs)) {
+          assignedSubjectIds = fetchedSubs.map((s) => s.id);
+        }
+      } catch {}
+    }
+    setCourseForm({
+      ...defaultCourseForm,
+      ...course,
+      selectedSubjectIds: assignedSubjectIds,
+    });
     setCourseActiveTab('Basic Information');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1859,318 +2166,754 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
             </div>
           )}
 
-          {/* SUBJECT MASTER VIEW */}
+          {/* SUBJECT MASTER VIEW (Database Connected & Relational) */}
           {activeTab === 'Subject Master' && (
             <div className="space-y-6">
-              <div>
-                <h1 className="text-xl font-bold text-slate-900 tracking-tight">Subject Master</h1>
-                <div className="flex items-center space-x-1.5 text-xs text-slate-500 mt-1">
-                  <Home className="w-3.5 h-3.5 text-slate-400" />
-                  <span>/</span>
-                  <span className="text-slate-700 font-semibold">Subject Master</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-xl font-bold text-slate-900 tracking-tight">Subject Master</h1>
+                  <div className="flex items-center space-x-1.5 text-xs text-slate-500 mt-1">
+                    <Home className="w-3.5 h-3.5 text-slate-400" />
+                    <span>/</span>
+                    <span className="text-slate-700 font-semibold">Subject Master</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-xs font-bold">
+                    {subjectList.length} Total Master Subjects
+                  </span>
                 </div>
               </div>
 
               {/* SUBJECT FORM */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50">
+                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                   <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wide">
-                    SUBJECTS
+                    {subjectForm.id ? `EDIT SUBJECT: ${subjectForm.subjectName}` : 'ADD NEW SUBJECT'}
                   </h3>
+                  {subjectForm.id && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSubjectForm({
+                          id: null,
+                          subjectCode: '',
+                          subjectName: '',
+                          description: '',
+                          displayIndex: '1',
+                          isActive: true,
+                        })
+                      }
+                      className="text-xs text-rose-600 hover:text-rose-700 font-bold"
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
                 </div>
 
                 <form onSubmit={handleSaveSubject} className="p-5 space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Subject Code</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Enter Subject code"
-                      value={subjectForm.subjectCode}
-                      onChange={(e) => setSubjectForm({ ...subjectForm, subjectCode: e.target.value })}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-md text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Subject Code <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. 101, PHY, MATH"
+                        value={subjectForm.subjectCode}
+                        onChange={(e) => setSubjectForm({ ...subjectForm, subjectCode: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-md text-xs font-mono font-bold focus:outline-none focus:border-blue-500 text-slate-900"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Subject Name <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Physics, Mathematics, LR & English"
+                        value={subjectForm.subjectName}
+                        onChange={(e) => setSubjectForm({ ...subjectForm, subjectName: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-md text-xs font-bold focus:outline-none focus:border-blue-500 text-slate-900"
+                      />
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Subject Name</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    <div className="sm:col-span-3">
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Description (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="Brief overview of the subject curriculum"
+                        value={subjectForm.description}
+                        onChange={(e) => setSubjectForm({ ...subjectForm, description: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-md text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Display Order</label>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="1, 2, 3..."
+                        value={subjectForm.displayIndex}
+                        onChange={(e) => setSubjectForm({ ...subjectForm, displayIndex: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-md text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 pt-1">
                     <input
-                      type="text"
-                      required
-                      placeholder="Enter Subject Name"
-                      value={subjectForm.subjectName}
-                      onChange={(e) => setSubjectForm({ ...subjectForm, subjectName: e.target.value })}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-md text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                      type="checkbox"
+                      id="subActiveCheck"
+                      checked={subjectForm.isActive}
+                      onChange={(e) => setSubjectForm({ ...subjectForm, isActive: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
                     />
+                    <label htmlFor="subActiveCheck" className="text-xs font-semibold text-slate-800 cursor-pointer">
+                      Active (Available for Course Assignments)
+                    </label>
                   </div>
 
                   <div className="pt-2 flex items-center space-x-3">
                     <button
                       type="submit"
-                      className="px-5 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded-md shadow-sm transition-colors"
+                      disabled={isSavingSubject}
+                      className="px-6 py-2.5 bg-[#1d4ed8] hover:bg-[#1e40af] disabled:opacity-50 text-white font-bold text-xs rounded-md shadow-sm transition-colors cursor-pointer"
                     >
-                      {subjectForm.id ? 'Update' : 'Save'}
+                      {isSavingSubject ? 'Saving...' : subjectForm.id ? 'Update Subject' : 'Save Subject'}
                     </button>
+                    {subjectForm.id && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSubjectForm({
+                            id: null,
+                            subjectCode: '',
+                            subjectName: '',
+                            description: '',
+                            displayIndex: '1',
+                            isActive: true,
+                          })
+                        }
+                        className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-md transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    )}
                   </div>
                 </form>
               </div>
 
               {/* SUBJECT TABLE */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-full sm:w-64">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="w-full sm:w-72">
                     <input
                       type="text"
-                      placeholder="Search..."
+                      placeholder="Search by code, name, description..."
                       value={subjectSearchTerm}
                       onChange={(e) => setSubjectSearchTerm(e.target.value)}
-                      className="w-full px-3 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-blue-500 text-slate-800"
                     />
+                  </div>
+
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-xs text-slate-500 font-medium mr-1">Status:</span>
+                    {['All', 'Active', 'Inactive'].map((st) => (
+                      <button
+                        key={st}
+                        onClick={() => setSubjectStatusFilter(st)}
+                        className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                          subjectStatusFilter === st
+                            ? 'bg-[#1d4ed8] text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {st}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <div className="overflow-x-auto border border-slate-200 rounded">
+                <div className="overflow-x-auto border border-slate-200 rounded-lg">
                   <table className="w-full text-left text-xs text-slate-700">
                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[11px]">
                       <tr>
-                        <th className="p-3 border-r border-slate-200 w-1/3">SUBJECT CODE</th>
-                        <th className="p-3 border-r border-slate-200 w-1/2">SUBJECT NAME</th>
-                        <th className="p-3 text-center w-1/6">ACTION</th>
+                        <th className="p-3 border-r border-slate-200 w-24">SUBJECT CODE</th>
+                        <th className="p-3 border-r border-slate-200">SUBJECT NAME</th>
+                        <th className="p-3 border-r border-slate-200 w-44">ASSIGNED COURSES</th>
+                        <th className="p-3 border-r border-slate-200 w-28 text-center">STATUS</th>
+                        <th className="p-3 border-r border-slate-200 w-32">CREATED DATE</th>
+                        <th className="p-3 text-center w-28">ACTIONS</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 font-medium">
                       {subjectList
-                        .filter(s =>
-                          s.subjectCode.toLowerCase().includes(subjectSearchTerm.toLowerCase()) ||
-                          s.subjectName.toLowerCase().includes(subjectSearchTerm.toLowerCase())
-                        )
-                        .map((s) => (
-                          <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="p-3 border-r border-slate-200 font-mono text-slate-700">{s.subjectCode}</td>
-                            <td className="p-3 border-r border-slate-200 font-bold text-slate-800">{s.subjectName}</td>
-                            <td className="p-3 text-center space-x-2">
-                              <button
-                                onClick={() => handleEditSubject(s)}
-                                className="p-1.5 border border-slate-300 hover:border-slate-500 rounded-full text-slate-700 hover:bg-slate-100 transition-colors inline-flex items-center justify-center"
-                              >
-                                <Edit className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteSubject(s.id)}
-                                className="p-1.5 border border-rose-200 hover:border-rose-400 rounded-full text-rose-600 hover:bg-rose-50 transition-colors inline-flex items-center justify-center"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        .filter((s) => {
+                          const matchesSearch =
+                            s.subjectCode.toLowerCase().includes(subjectSearchTerm.toLowerCase()) ||
+                            s.subjectName.toLowerCase().includes(subjectSearchTerm.toLowerCase()) ||
+                            (s.description && s.description.toLowerCase().includes(subjectSearchTerm.toLowerCase()));
+
+                          const matchesStatus =
+                            subjectStatusFilter === 'All'
+                              ? true
+                              : subjectStatusFilter === 'Active'
+                              ? s.isActive !== false
+                              : s.isActive === false;
+
+                          return matchesSearch && matchesStatus;
+                        })
+                        .map((s) => {
+                          const courseCount = Number(s.associatedCoursesCount) || 0;
+                          return (
+                            <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3 border-r border-slate-200 font-mono font-bold text-blue-700">
+                                {s.subjectCode}
+                              </td>
+                              <td className="p-3 border-r border-slate-200">
+                                <div className="font-bold text-slate-900">{s.subjectName}</div>
+                                {s.description && (
+                                  <div className="text-[11px] text-slate-400 line-clamp-1">{s.description}</div>
+                                )}
+                              </td>
+                              <td className="p-3 border-r border-slate-200">
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingAssignedSubject(s)}
+                                  className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    courseCount > 0
+                                      ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
+                                      : 'bg-slate-100 text-slate-400 border border-slate-200'
+                                  }`}
+                                >
+                                  <span>{courseCount} {courseCount === 1 ? 'Course' : 'Courses'}</span>
+                                  {courseCount > 0 && <span className="text-[10px]">👁</span>}
+                                </button>
+                              </td>
+                              <td className="p-3 border-r border-slate-200 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleSubjectStatus(s)}
+                                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors cursor-pointer ${
+                                    s.isActive !== false
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                                      : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  {s.isActive !== false ? 'Active' : 'Inactive'}
+                                </button>
+                              </td>
+                              <td className="p-3 border-r border-slate-200 text-slate-500 text-[11px]">
+                                {s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                              </td>
+                              <td className="p-3 text-center space-x-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditSubject(s)}
+                                  title="Edit Subject"
+                                  className="p-1.5 border border-slate-300 hover:border-slate-500 rounded-md text-slate-700 hover:bg-slate-100 transition-colors inline-flex items-center justify-center cursor-pointer"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSubject(s)}
+                                  title={courseCount > 0 ? `Cannot delete: assigned to ${courseCount} course(s)` : 'Delete Subject'}
+                                  className={`p-1.5 border rounded-md transition-colors cursor-pointer ${
+                                    courseCount > 0
+                                      ? 'border-slate-200 text-slate-300 hover:bg-slate-50'
+                                      : 'border-rose-200 hover:border-rose-400 text-rose-600 hover:bg-rose-50'
+                                  }`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 text-xs text-slate-500">
-                  <div>Showing 1 to {subjectList.length} of {subjectList.length} entries</div>
-                  <div className="flex items-center space-x-1">
-                    <button className="px-2.5 py-1 text-slate-400 border border-slate-200 rounded text-[11px] disabled:opacity-50">Previous</button>
-                    <button className="px-2.5 py-1 bg-[#1d4ed8] text-white font-bold rounded text-[11px]">1</button>
-                    <button className="px-2.5 py-1 text-slate-400 border border-slate-200 rounded text-[11px] disabled:opacity-50">Next</button>
-                  </div>
+                  <div>Showing {subjectList.length} total subjects in master catalogue</div>
                 </div>
               </div>
+
+              {/* POPUP: VIEW ASSIGNED COURSES */}
+              {viewingAssignedSubject && (
+                <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div>
+                        <h4 className="font-extrabold text-base text-slate-900">
+                          Courses Using {viewingAssignedSubject.subjectName}
+                        </h4>
+                        <p className="text-xs text-slate-500 font-mono">
+                          Code: {viewingAssignedSubject.subjectCode} • ID: {viewingAssignedSubject.id}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setViewingAssignedSubject(null)}
+                        className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {(viewingAssignedSubject.associatedCourses || []).length === 0 ? (
+                        <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 rounded-xl">
+                          No courses currently reference this subject.
+                        </div>
+                      ) : (
+                        (viewingAssignedSubject.associatedCourses || []).map((c) => (
+                          <div
+                            key={c.id}
+                            className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-2"
+                          >
+                            <div>
+                              <div className="font-bold text-xs text-slate-800">{c.title}</div>
+                              {c.exam && (
+                                <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-bold">
+                                  {c.exam}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-slate-400 font-mono">Course ID #{c.id}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setViewingAssignedSubject(null)}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* CHAPTER MASTER TABBED VIEW */}
           {activeTab === 'Chapter Master' && (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-xl font-bold text-slate-900 tracking-tight">Chapter</h1>
-                <div className="flex items-center space-x-1.5 text-xs text-slate-500 mt-1">
-                  <Home className="w-3.5 h-3.5 text-slate-400" />
-                  <span>/</span>
-                  <span className="text-slate-700 font-semibold">Chapter Master</span>
+            <div className="space-y-6 animate-in fade-in">
+              {/* Header Title & Breadcrumb */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Chapter Master</h1>
+                  <nav className="flex items-center space-x-2 text-xs text-slate-500 mt-1">
+                    <button onClick={() => setActiveTab('Dashboard')} className="hover:text-slate-900 flex items-center gap-1 cursor-pointer">
+                      <Home className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                    <span>/</span>
+                    <span className="text-slate-800 font-bold">
+                      {chapterActiveTab === 'Basic Information' ? (chapterForm.id ? 'Edit Chapter' : 'Add New Chapter') : 'Chapter Catalogue'}
+                    </span>
+                  </nav>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterForm(defaultChapterForm);
+                      setChapterActiveTab('Basic Information');
+                    }}
+                    className="px-4 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add New Chapter</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50">
-                  <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wide">
-                    Chapter
-                  </h3>
-                </div>
-
-                <div className="flex border-b border-slate-200 bg-slate-50/50">
+              {/* CARD WITH TABBED NAVIGATION */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+                {/* TABS NAVIGATION BAR */}
+                <div className="flex border-b border-slate-200 bg-slate-50/70">
                   <button
                     type="button"
                     onClick={() => setChapterActiveTab('Basic Information')}
-                    className={`flex items-center space-x-2 px-6 py-3 text-xs font-bold transition-colors ${
+                    className={`flex items-center space-x-2 px-6 py-3.5 text-xs font-extrabold transition-all cursor-pointer ${
                       chapterActiveTab === 'Basic Information'
                         ? 'bg-[#1d4ed8] text-white shadow-sm'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                     }`}
                   >
-                    <Settings className="w-3.5 h-3.5" />
-                    <span>Basic Information</span>
+                    <Settings className="w-4 h-4" />
+                    <span>{chapterForm.id ? 'Edit Chapter Details' : 'Basic Information & Setup'}</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setChapterActiveTab('Table')}
-                    className={`flex items-center space-x-2 px-6 py-3 text-xs font-bold transition-colors ${
+                    className={`flex items-center space-x-2 px-6 py-3.5 text-xs font-extrabold transition-all cursor-pointer ${
                       chapterActiveTab === 'Table'
                         ? 'bg-[#1d4ed8] text-white shadow-sm'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                     }`}
                   >
-                    <List className="w-3.5 h-3.5" />
-                    <span>Table</span>
+                    <List className="w-4 h-4" />
+                    <span>Chapters Catalogue ({chapterList.length})</span>
                   </button>
                 </div>
 
+                {/* TAB 1: FORM */}
                 {chapterActiveTab === 'Basic Information' && (
-                  <form onSubmit={handleSaveChapter} className="p-6 space-y-5">
-                    <div>
-                      <label className="block text-xs font-bold uppercase text-slate-800 mb-1">
-                        SUBJECT
-                      </label>
-                      <select
-                        value={chapterForm.subject}
-                        onChange={(e) => setChapterForm({ ...chapterForm, subject: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                      >
-                        <option value="">Select Subject</option>
-                        <option value="Physics">Physics</option>
-                        <option value="Chemistry">Chemistry</option>
-                        <option value="Maths">Maths</option>
-                        <option value="LR & English">LR & English</option>
-                        <option value="Aptitude">Aptitude</option>
-                      </select>
-                    </div>
+                  <form onSubmit={handleSaveChapter} className="p-6 sm:p-8 space-y-6">
+                    <div className="bg-slate-50/50 rounded-2xl border border-slate-200/80 p-5 sm:p-6 space-y-5">
+                      <div className="border-b border-slate-200 pb-3">
+                        <h3 className="font-black text-slate-900 text-xs sm:text-sm uppercase tracking-wider">
+                          {chapterForm.id ? `EDIT CHAPTER (#${chapterForm.id})` : 'NEW CHAPTER INFORMATION'}
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Organize academic chapters strictly under Course → Subject hierarchy.
+                        </p>
+                      </div>
 
-                    <div>
-                      <label className="block text-xs font-bold uppercase text-slate-800 mb-1">
-                        CHAPTER NAME
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Enter Chapter Name"
-                        value={chapterForm.chapterName}
-                        onChange={(e) => setChapterForm({ ...chapterForm, chapterName: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold uppercase text-slate-800 mb-1">
-                        BRIEF DESCRIPTION
-                      </label>
-
-                      <div className="border border-slate-200 rounded overflow-hidden bg-white">
-                        <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap items-center gap-1.5 text-slate-600">
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Source"><Code className="w-3.5 h-3.5" /></button>
-                          <span className="w-px h-4 bg-slate-300 mx-0.5" />
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Undo"><RotateCcw className="w-3.5 h-3.5" /></button>
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Redo"><RotateCw className="w-3.5 h-3.5" /></button>
-                          <span className="w-px h-4 bg-slate-300 mx-0.5" />
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Bold"><Bold className="w-3.5 h-3.5" /></button>
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Italic"><Italic className="w-3.5 h-3.5" /></button>
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Underline"><Underline className="w-3.5 h-3.5" /></button>
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Strikethrough"><Strikethrough className="w-3.5 h-3.5" /></button>
+                      {/* ROW 1: COURSE & SUBJECT CASCADING SELECTORS */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        {/* SELECT COURSE */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                            SELECT COURSE <span className="text-rose-500">*</span>
+                          </label>
+                          <select
+                            required
+                            value={chapterForm.courseId}
+                            onChange={(e) => handleChapterCourseChange(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-2xs cursor-pointer"
+                          >
+                            <option value="">-- Choose Course --</option>
+                            {courseList.map((course) => (
+                              <option key={course.id} value={course.id}>
+                                {course.title} ({course.exam || 'General'})
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
-                        <textarea
-                          rows={6}
-                          placeholder="Enter brief description..."
-                          value={chapterForm.description}
-                          onChange={(e) => setChapterForm({ ...chapterForm, description: e.target.value })}
-                          className="w-full p-3 text-xs focus:outline-none text-slate-800 resize-y"
-                        />
-
-                        <div className="h-2 bg-[#1e40af] w-full" />
+                        {/* SELECT SUBJECT (CASCADING FILTERED) */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                            SELECT SUBJECT <span className="text-rose-500">*</span>
+                          </label>
+                          <select
+                            required
+                            disabled={!chapterForm.courseId}
+                            value={chapterForm.subjectId}
+                            onChange={(e) => setChapterForm({ ...chapterForm, subjectId: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-2xs disabled:bg-slate-100 disabled:text-slate-400 cursor-pointer"
+                          >
+                            <option value="">
+                              {!chapterForm.courseId ? '-- Select a Course First --' : '-- Choose Subject --'}
+                            </option>
+                            {getAssignedSubjectsForCourse(chapterForm.courseId).map((sub) => (
+                              <option key={sub.id} value={sub.id}>
+                                {sub.subjectName} (Code: {sub.subjectCode || sub.id})
+                              </option>
+                            ))}
+                          </select>
+                          {chapterForm.courseId && getAssignedSubjectsForCourse(chapterForm.courseId).length === 0 && (
+                            <p className="text-[11px] text-amber-600 mt-1 font-medium">
+                              No subjects assigned to this course. Please assign subjects in Course Master.
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
 
-                    <div>
-                      <label className="block text-xs font-bold uppercase text-slate-800 mb-1">
-                        ORDER NUMBER
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Enter Order Number"
-                        value={chapterForm.orderNumber}
-                        onChange={(e) => setChapterForm({ ...chapterForm, orderNumber: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                      />
-                    </div>
+                      {/* ROW 2: CHAPTER NAME & CHAPTER CODE */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        {/* CHAPTER NAME */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                            CHAPTER NAME <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Rotational Motion & Dynamics"
+                            value={chapterForm.chapterName}
+                            onChange={(e) => setChapterForm({ ...chapterForm, chapterName: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-2xs"
+                          />
+                        </div>
 
-                    <div className="flex items-center space-x-2 pt-1">
-                      <input
-                        type="checkbox"
-                        id="enabledCheck"
-                        checked={chapterForm.enabled}
-                        onChange={(e) => setChapterForm({ ...chapterForm, enabled: e.target.checked })}
-                        className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-                      />
-                      <label htmlFor="enabledCheck" className="text-xs font-semibold text-slate-700">
-                        Enabled
-                      </label>
-                    </div>
+                        {/* CHAPTER CODE */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                            CHAPTER CODE (OPTIONAL)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. PHY-02 or BIT-PHY-01"
+                            value={chapterForm.chapterCode}
+                            onChange={(e) => setChapterForm({ ...chapterForm, chapterCode: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-2xs"
+                          />
+                        </div>
+                      </div>
 
-                    <div className="pt-3">
-                      <button
-                        type="submit"
-                        className="px-6 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded shadow-sm transition-colors"
-                      >
-                        {chapterForm.id ? 'Update' : 'Save'}
-                      </button>
+                      {/* ROW 3: DESCRIPTION */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                          BRIEF DESCRIPTION &amp; SYLLABUS OVERVIEW
+                        </label>
+                        <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                          <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap items-center gap-1.5 text-slate-600 text-xs">
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Source"><Code className="w-3.5 h-3.5" /></button>
+                            <span className="w-px h-4 bg-slate-300 mx-0.5" />
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Undo"><RotateCcw className="w-3.5 h-3.5" /></button>
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Redo"><RotateCw className="w-3.5 h-3.5" /></button>
+                            <span className="w-px h-4 bg-slate-300 mx-0.5" />
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Bold"><Bold className="w-3.5 h-3.5" /></button>
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Italic"><Italic className="w-3.5 h-3.5" /></button>
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Underline"><Underline className="w-3.5 h-3.5" /></button>
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Strikethrough"><Strikethrough className="w-3.5 h-3.5" /></button>
+                          </div>
+                          <textarea
+                            rows={4}
+                            placeholder="Enter detailed syllabus subtopics, learning outcomes, or chapter notes..."
+                            value={chapterForm.description}
+                            onChange={(e) => setChapterForm({ ...chapterForm, description: e.target.value })}
+                            className="w-full p-4 text-xs font-normal focus:outline-none text-slate-800 resize-y leading-relaxed"
+                          />
+                        </div>
+                      </div>
+
+                      {/* ROW 4: ORDER & ACTIVE STATUS */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-slate-200">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                            DISPLAY ORDER NUMBER
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="1"
+                            value={chapterForm.displayOrder}
+                            onChange={(e) => setChapterForm({ ...chapterForm, displayOrder: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-2xs"
+                          />
+                        </div>
+
+                        <div className="flex items-center pt-6">
+                          <label className="flex items-center space-x-2.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={chapterForm.isActive}
+                              onChange={(e) => setChapterForm({ ...chapterForm, isActive: e.target.checked })}
+                              className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                            />
+                            <span className="text-xs font-bold text-slate-800">
+                              Active / Published (Visible in Course Curriculum)
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* SUBMIT BUTTONS */}
+                      <div className="pt-4 flex items-center justify-end space-x-3 border-t border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setChapterForm(defaultChapterForm);
+                            setChapterActiveTab('Table');
+                          }}
+                          className="px-5 py-2.5 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={chapterSaving}
+                          className="px-6 py-2.5 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-extrabold text-xs rounded-xl shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                        >
+                          {chapterSaving ? 'Saving...' : (chapterForm.id ? 'Update Chapter' : 'Save Chapter')}
+                        </button>
+                      </div>
                     </div>
                   </form>
                 )}
 
+                {/* TAB 2: CHAPTER CATALOGUE TABLE */}
                 {chapterActiveTab === 'Table' && (
-                  <div className="p-6 space-y-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="relative w-full flex items-center">
+                  <div className="p-6 sm:p-8 space-y-5">
+                    {/* FILTER & SEARCH CONTROL BAR */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {/* Search */}
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
-                          placeholder="Search..."
+                          placeholder="Search chapters or codes..."
                           value={chapterSearchTerm}
                           onChange={(e) => setChapterSearchTerm(e.target.value)}
-                          className="w-full pl-3 pr-10 py-2 border border-slate-200 rounded-l text-xs focus:outline-none focus:border-blue-500 text-slate-800"
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all shadow-2xs"
                         />
-                        <button type="button" className="px-4 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white rounded-r">
-                          <Search className="w-4 h-4" />
-                        </button>
+                      </div>
+
+                      {/* Course Filter */}
+                      <div>
+                        <select
+                          value={chapterCourseFilter}
+                          onChange={(e) => {
+                            setChapterCourseFilter(e.target.value);
+                            setChapterSubjectFilter(''); // Reset subject filter when course filter changes
+                          }}
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all shadow-2xs cursor-pointer"
+                        >
+                          <option value="">All Courses ({courseList.length})</option>
+                          {courseList.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Subject Filter */}
+                      <div>
+                        <select
+                          value={chapterSubjectFilter}
+                          onChange={(e) => setChapterSubjectFilter(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all shadow-2xs cursor-pointer"
+                        >
+                          <option value="">All Subjects</option>
+                          {(chapterCourseFilter ? getAssignedSubjectsForCourse(chapterCourseFilter) : subjects).map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.subjectName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Status Filter */}
+                      <div>
+                        <select
+                          value={chapterStatusFilter}
+                          onChange={(e) => setChapterStatusFilter(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all shadow-2xs cursor-pointer"
+                        >
+                          <option value="ALL">All Status</option>
+                          <option value="ACTIVE">Active Only</option>
+                          <option value="INACTIVE">Inactive Only</option>
+                        </select>
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto border border-slate-200 rounded">
+                    {/* TABLE */}
+                    <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-2xs bg-white">
                       <table className="w-full text-left text-xs text-slate-700">
-                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[11px]">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-black uppercase text-[11px] tracking-wider">
                           <tr>
-                            <th className="p-3 border-r border-slate-200 w-3/4">CHAPTER</th>
-                            <th className="p-3 text-center w-1/4">ACTION</th>
+                            <th className="p-3.5">CHAPTER NAME</th>
+                            <th className="p-3.5">COURSE</th>
+                            <th className="p-3.5">SUBJECT</th>
+                            <th className="p-3.5 text-center">ORDER</th>
+                            <th className="p-3.5 text-center">STATUS</th>
+                            <th className="p-3.5 text-center">ACTIONS</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200 font-medium">
+                        <tbody className="divide-y divide-slate-100 font-medium">
                           {chapterList
-                            .filter(c => c.chapterName.toLowerCase().includes(chapterSearchTerm.toLowerCase()))
-                            .map((c) => (
-                              <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
-                                <td className="p-3 border-r border-slate-200 text-slate-800">
-                                  {c.chapterName}
+                            .filter((c) => {
+                              // Course filter
+                              if (chapterCourseFilter && String(c.courseId) !== String(chapterCourseFilter)) return false;
+                              // Subject filter
+                              if (chapterSubjectFilter && String(c.subjectId) !== String(chapterSubjectFilter)) return false;
+                              // Status filter
+                              if (chapterStatusFilter === 'ACTIVE' && c.isActive === false) return false;
+                              if (chapterStatusFilter === 'INACTIVE' && c.isActive !== false) return false;
+                              // Search filter
+                              if (chapterSearchTerm.trim()) {
+                                const q = chapterSearchTerm.toLowerCase();
+                                const nameMatch = (c.chapterName || '').toLowerCase().includes(q);
+                                const codeMatch = (c.chapterCode || '').toLowerCase().includes(q);
+                                const courseMatch = (c.courseTitle || '').toLowerCase().includes(q);
+                                const subMatch = (c.subjectName || '').toLowerCase().includes(q);
+                                return nameMatch || codeMatch || courseMatch || subMatch;
+                              }
+                              return true;
+                            })
+                            .map((chapter) => (
+                              <tr key={chapter.id} className="hover:bg-slate-50/70 transition-colors">
+                                <td className="p-3.5">
+                                  <div className="font-extrabold text-slate-900 text-xs">
+                                    {chapter.chapterName}
+                                  </div>
+                                  {chapter.chapterCode && (
+                                    <div className="text-[10px] text-slate-400 font-semibold tracking-wide">
+                                      Code: {chapter.chapterCode}
+                                    </div>
+                                  )}
                                 </td>
-                                <td className="p-3 text-center space-x-2">
+
+                                <td className="p-3.5 text-slate-800">
+                                  <span className="font-bold text-slate-900">{chapter.courseTitle}</span>
+                                  {chapter.courseExam && (
+                                    <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-black bg-slate-100 text-slate-600 uppercase">
+                                      {chapter.courseExam}
+                                    </span>
+                                  )}
+                                </td>
+
+                                <td className="p-3.5">
+                                  <span className="px-2 py-0.5 rounded text-[11px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200">
+                                    {chapter.subjectName}
+                                  </span>
+                                </td>
+
+                                <td className="p-3.5 text-center font-bold text-slate-700">
+                                  {chapter.displayOrder || 1}
+                                </td>
+
+                                <td className="p-3.5 text-center">
                                   <button
-                                    onClick={() => handleEditChapter(c)}
-                                    className="p-1.5 border border-slate-300 hover:border-slate-500 rounded-full text-slate-700 hover:bg-slate-100 transition-colors inline-flex items-center justify-center"
+                                    type="button"
+                                    onClick={() => handleToggleChapterStatus(chapter)}
+                                    title="Click to toggle status"
+                                    className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wide uppercase transition-all cursor-pointer ${
+                                      chapter.isActive !== false
+                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                                    }`}
+                                  >
+                                    {chapter.isActive !== false ? 'Active' : 'Inactive'}
+                                  </button>
+                                </td>
+
+                                <td className="p-3.5 text-center space-x-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEditChapter(chapter)}
+                                    className="p-1.5 border border-blue-200 hover:border-blue-400 rounded-lg text-blue-700 hover:bg-blue-50 transition-colors inline-flex items-center justify-center cursor-pointer shadow-2xs"
+                                    title="Edit Chapter"
                                   >
                                     <Edit className="w-3.5 h-3.5" />
                                   </button>
                                   <button
-                                    onClick={() => handleDeleteChapter(c.id)}
-                                    className="p-1.5 border border-rose-200 hover:border-rose-400 rounded-full text-rose-600 hover:bg-rose-50 transition-colors inline-flex items-center justify-center"
+                                    type="button"
+                                    onClick={() => handleDeleteChapter(chapter.id, chapter.chapterName)}
+                                    className="p-1.5 border border-rose-200 hover:border-rose-400 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors inline-flex items-center justify-center cursor-pointer shadow-2xs"
+                                    title="Delete Chapter"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
@@ -2179,247 +2922,478 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                             ))}
                         </tbody>
                       </table>
-                    </div>
 
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 text-xs text-slate-500">
-                      <div>Showing 1 to {chapterList.length} of 174 entries</div>
-                      <div className="flex items-center space-x-1">
-                        <button className="px-2.5 py-1 text-slate-400 border border-slate-200 rounded text-[11px] disabled:opacity-50">Previous</button>
-                        <button className="px-2.5 py-1 bg-[#1d4ed8] text-white font-bold rounded text-[11px]">1</button>
-                        <button className="px-2.5 py-1 text-slate-400 border border-slate-200 rounded text-[11px]">2</button>
-                        <button className="px-2.5 py-1 text-slate-400 border border-slate-200 rounded text-[11px]">Next</button>
-                      </div>
+                      {chapterList.length === 0 && !chapterLoading && (
+                        <div className="p-8 text-center text-xs text-slate-400">
+                          No chapters found. Click &quot;Add New Chapter&quot; above to create one.
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
-
               </div>
             </div>
           )}
 
-          {/* CHAPTER TOPIC MASTER TABBED VIEW (MATCHING NEW SCREENSHOTS 1 & 2 FOR CHAPTER TOPIC) */}
+          {/* CHAPTER TOPIC MASTER TABBED VIEW */}
           {activeTab === 'Chapter Topic Master' && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-in fade-in">
               {/* Header Title & Breadcrumb */}
-              <div>
-                <h1 className="text-xl font-bold text-slate-900 tracking-tight">Chapter Topic</h1>
-                <div className="flex items-center space-x-1.5 text-xs text-slate-500 mt-1">
-                  <Home className="w-3.5 h-3.5 text-slate-400" />
-                  <span>/</span>
-                  <span className="text-slate-700 font-semibold">Chapter Topic</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Chapter Topic Master</h1>
+                  <nav className="flex items-center space-x-2 text-xs text-slate-500 mt-1">
+                    <button onClick={() => setActiveTab('Dashboard')} className="hover:text-slate-900 flex items-center gap-1 cursor-pointer">
+                      <Home className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                    <span>/</span>
+                    <span className="text-slate-800 font-bold">
+                      {topicActiveTab === 'Basic Information' ? (topicForm.id ? 'Edit Topic' : 'Add New Topic') : 'Topics Catalogue'}
+                    </span>
+                  </nav>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTopicForm(defaultTopicForm);
+                      setTopicActiveTab('Basic Information');
+                    }}
+                    className="px-4 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add New Topic</span>
+                  </button>
                 </div>
               </div>
 
-              {/* CARD WITH TABBED NAVIGATION MATCHING SCREENSHOTS 1 & 2 */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50">
-                  <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wide">
-                    Chapter Topic
-                  </h3>
-                </div>
-
-                {/* TABS NAVIGATION BAR (Basic Information vs Table) */}
-                <div className="flex border-b border-slate-200 bg-slate-50/50">
+              {/* CARD WITH TABBED NAVIGATION */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+                {/* TABS NAVIGATION BAR */}
+                <div className="flex border-b border-slate-200 bg-slate-50/70">
                   <button
                     type="button"
                     onClick={() => setTopicActiveTab('Basic Information')}
-                    className={`flex items-center space-x-2 px-6 py-3 text-xs font-bold transition-colors ${
+                    className={`flex items-center space-x-2 px-6 py-3.5 text-xs font-extrabold transition-all cursor-pointer ${
                       topicActiveTab === 'Basic Information'
                         ? 'bg-[#1d4ed8] text-white shadow-sm'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                     }`}
                   >
-                    <Settings className="w-3.5 h-3.5" />
-                    <span>Basic Information</span>
+                    <Settings className="w-4 h-4" />
+                    <span>{topicForm.id ? 'Edit Topic Details' : 'Basic Information & Setup'}</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setTopicActiveTab('Table')}
-                    className={`flex items-center space-x-2 px-6 py-3 text-xs font-bold transition-colors ${
+                    className={`flex items-center space-x-2 px-6 py-3.5 text-xs font-extrabold transition-all cursor-pointer ${
                       topicActiveTab === 'Table'
                         ? 'bg-[#1d4ed8] text-white shadow-sm'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                     }`}
                   >
-                    <List className="w-3.5 h-3.5" />
-                    <span>Table</span>
+                    <List className="w-4 h-4" />
+                    <span>Topics Catalogue ({topicList.length})</span>
                   </button>
                 </div>
 
-                {/* TAB 1 CONTENT: BASIC INFORMATION FORM (MATCHING SCREENSHOT 1) */}
+                {/* TAB 1: BASIC INFORMATION FORM */}
                 {topicActiveTab === 'Basic Information' && (
-                  <form onSubmit={handleSaveTopic} className="p-6 space-y-5">
-                    {/* ROW 1: 2 COLUMNS FOR SUBJECT & CHAPTER */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 mb-1">
-                          Subject
-                        </label>
-                        <select
-                          value={topicForm.subject}
-                          onChange={(e) => setTopicForm({ ...topicForm, subject: e.target.value })}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                        >
-                          <option value="">Select Subject</option>
-                          <option value="Physics">Physics</option>
-                          <option value="Chemistry">Chemistry</option>
-                          <option value="Maths">Maths</option>
-                          <option value="LR & English">LR & English</option>
-                          <option value="Aptitude">Aptitude</option>
-                        </select>
+                  <form onSubmit={handleSaveTopic} className="p-6 sm:p-8 space-y-6">
+                    <div className="bg-slate-50/50 rounded-2xl border border-slate-200/80 p-5 sm:p-6 space-y-5">
+                      <div className="border-b border-slate-200 pb-3">
+                        <h3 className="font-black text-slate-900 text-xs sm:text-sm uppercase tracking-wider">
+                          {topicForm.id ? `EDIT TOPIC (#${topicForm.id})` : 'NEW TOPIC INFORMATION'}
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Academic hierarchy: Course → Subject → Chapter → Topic
+                        </p>
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 mb-1">
-                          Chapter
-                        </label>
-                        <select
-                          value={topicForm.chapter}
-                          onChange={(e) => setTopicForm({ ...topicForm, chapter: e.target.value })}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                        >
-                          <option value="">Select Chapter</option>
-                          <option value="Rotational Motion">Rotational Motion</option>
-                          <option value="Electrostatics & Capacitance">Electrostatics & Capacitance</option>
-                          <option value="Integration & Calculus">Integration & Calculus</option>
-                          <option value="Alcohols Phenols and Ethers">Alcohols Phenols and Ethers</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* ROW 2: CHAPTER TOPIC NAME */}
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1">
-                        Chapter Topic Name
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Enter Chapter Topic Name"
-                        value={topicForm.topicName}
-                        onChange={(e) => setTopicForm({ ...topicForm, topicName: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                      />
-                    </div>
-
-                    {/* ROW 3: BRIEF DESCRIPTION WITH RICH TEXT TOOLBAR */}
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1">
-                        Brief Description
-                      </label>
-
-                      <div className="border border-slate-200 rounded overflow-hidden bg-white">
-                        <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap items-center gap-1.5 text-slate-600">
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Source"><Code className="w-3.5 h-3.5" /></button>
-                          <span className="w-px h-4 bg-slate-300 mx-0.5" />
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Undo"><RotateCcw className="w-3.5 h-3.5" /></button>
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Redo"><RotateCw className="w-3.5 h-3.5" /></button>
-                          <span className="w-px h-4 bg-slate-300 mx-0.5" />
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Bold"><Bold className="w-3.5 h-3.5" /></button>
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Italic"><Italic className="w-3.5 h-3.5" /></button>
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Underline"><Underline className="w-3.5 h-3.5" /></button>
-                          <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Strikethrough"><Strikethrough className="w-3.5 h-3.5" /></button>
+                      {/* ROW 1: CASCADING 3-TIER SELECTORS: COURSE, SUBJECT, CHAPTER */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        {/* SELECT COURSE */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                            SELECT COURSE <span className="text-rose-500">*</span>
+                          </label>
+                          <select
+                            required
+                            value={topicForm.courseId}
+                            onChange={(e) => handleTopicCourseChange(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-2xs cursor-pointer"
+                          >
+                            <option value="">-- Choose Course --</option>
+                            {courseList.map((course) => (
+                              <option key={course.id} value={course.id}>
+                                {course.title} ({course.exam || 'General'})
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
-                        <textarea
-                          rows={6}
-                          placeholder="Enter brief description..."
-                          value={topicForm.description}
-                          onChange={(e) => setTopicForm({ ...topicForm, description: e.target.value })}
-                          className="w-full p-3 text-xs focus:outline-none text-slate-800 resize-y"
-                        />
+                        {/* SELECT SUBJECT */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                            SELECT SUBJECT <span className="text-rose-500">*</span>
+                          </label>
+                          <select
+                            required
+                            disabled={!topicForm.courseId}
+                            value={topicForm.subjectId}
+                            onChange={(e) => handleTopicSubjectChange(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-2xs disabled:bg-slate-100 disabled:text-slate-400 cursor-pointer"
+                          >
+                            <option value="">
+                              {!topicForm.courseId ? '-- Select Course First --' : '-- Choose Subject --'}
+                            </option>
+                            {getAssignedSubjectsForCourse(topicForm.courseId).map((sub) => (
+                              <option key={sub.id} value={sub.id}>
+                                {sub.subjectName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
 
-                        {/* Dark Blue Accent Line at bottom of editor */}
-                        <div className="h-2 bg-[#1e40af] w-full" />
+                        {/* SELECT CHAPTER */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                            SELECT CHAPTER <span className="text-rose-500">*</span>
+                          </label>
+                          <select
+                            required
+                            disabled={!topicForm.subjectId}
+                            value={topicForm.chapterId}
+                            onChange={(e) => setTopicForm({ ...topicForm, chapterId: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-2xs disabled:bg-slate-100 disabled:text-slate-400 cursor-pointer"
+                          >
+                            <option value="">
+                              {!topicForm.subjectId ? '-- Select Subject First --' : '-- Choose Chapter --'}
+                            </option>
+                            {chapterList
+                              .filter(
+                                (ch) =>
+                                  String(ch.courseId) === String(topicForm.courseId) &&
+                                  String(ch.subjectId) === String(topicForm.subjectId)
+                              )
+                              .map((ch) => (
+                                <option key={ch.id} value={ch.id}>
+                                  {ch.chapterName} {ch.chapterCode ? `(${ch.chapterCode})` : ''}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* ROW 4: ORDER NUMBER */}
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1">
-                        Order Number
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Enter Order Number"
-                        value={topicForm.orderNumber}
-                        onChange={(e) => setTopicForm({ ...topicForm, orderNumber: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                      />
-                    </div>
+                      {/* ROW 2: TOPIC NAME & CODE */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        {/* TOPIC NAME */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                            TOPIC NAME <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Newton's Second Law & Momentum"
+                            value={topicForm.topicName}
+                            onChange={(e) => setTopicForm({ ...topicForm, topicName: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-2xs"
+                          />
+                        </div>
 
-                    {/* ROW 5: ENABLED CHECKBOX */}
-                    <div className="flex items-center space-x-2 pt-1">
-                      <input
-                        type="checkbox"
-                        id="enabledTopicCheck"
-                        checked={topicForm.enabled}
-                        onChange={(e) => setTopicForm({ ...topicForm, enabled: e.target.checked })}
-                        className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-                      />
-                      <label htmlFor="enabledTopicCheck" className="text-xs font-semibold text-slate-700">
-                        Enabled
-                      </label>
-                    </div>
+                        {/* TOPIC CODE */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                            TOPIC CODE (OPTIONAL)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. TOP-PHY-03"
+                            value={topicForm.topicCode}
+                            onChange={(e) => setTopicForm({ ...topicForm, topicCode: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-2xs"
+                          />
+                        </div>
+                      </div>
 
-                    {/* SAVE / UPDATE BUTTON */}
-                    <div className="pt-3">
-                      <button
-                        type="submit"
-                        className="px-6 py-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-xs rounded shadow-sm transition-colors"
-                      >
-                        {topicForm.id ? 'Update' : 'Save'}
-                      </button>
+                      {/* ROW 3: DESCRIPTION */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                          BRIEF DESCRIPTION &amp; LEARNING OBJECTIVES
+                        </label>
+                        <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                          <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap items-center gap-1.5 text-slate-600 text-xs">
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Source"><Code className="w-3.5 h-3.5" /></button>
+                            <span className="w-px h-4 bg-slate-300 mx-0.5" />
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Undo"><RotateCcw className="w-3.5 h-3.5" /></button>
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Redo"><RotateCw className="w-3.5 h-3.5" /></button>
+                            <span className="w-px h-4 bg-slate-300 mx-0.5" />
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Bold"><Bold className="w-3.5 h-3.5" /></button>
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Italic"><Italic className="w-3.5 h-3.5" /></button>
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Underline"><Underline className="w-3.5 h-3.5" /></button>
+                            <button type="button" className="p-1 hover:bg-slate-200 rounded" title="Strikethrough"><Strikethrough className="w-3.5 h-3.5" /></button>
+                          </div>
+                          <textarea
+                            rows={4}
+                            placeholder="Enter detailed key concepts, formulas, and topic summary..."
+                            value={topicForm.description}
+                            onChange={(e) => setTopicForm({ ...topicForm, description: e.target.value })}
+                            className="w-full p-4 text-xs font-normal focus:outline-none text-slate-800 resize-y leading-relaxed"
+                          />
+                        </div>
+                      </div>
+
+                      {/* ROW 4: ORDER & ACTIVE STATUS */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-slate-200">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                            DISPLAY ORDER NUMBER
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="1"
+                            value={topicForm.displayOrder}
+                            onChange={(e) => setTopicForm({ ...topicForm, displayOrder: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-2xs"
+                          />
+                        </div>
+
+                        <div className="flex items-center pt-6">
+                          <label className="flex items-center space-x-2.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={topicForm.isActive}
+                              onChange={(e) => setTopicForm({ ...topicForm, isActive: e.target.checked })}
+                              className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                            />
+                            <span className="text-xs font-bold text-slate-800">
+                              Active / Published (Available for Video &amp; DPP Assignments)
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* SUBMIT BUTTONS */}
+                      <div className="pt-4 flex items-center justify-end space-x-3 border-t border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTopicForm(defaultTopicForm);
+                            setTopicActiveTab('Table');
+                          }}
+                          className="px-5 py-2.5 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={topicSaving}
+                          className="px-6 py-2.5 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-extrabold text-xs rounded-xl shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                        >
+                          {topicSaving ? 'Saving...' : (topicForm.id ? 'Update Topic' : 'Save Topic')}
+                        </button>
+                      </div>
                     </div>
                   </form>
                 )}
 
-                {/* TAB 2 CONTENT: TABLE VIEW (MATCHING SCREENSHOT 2) */}
+                {/* TAB 2: TOPICS CATALOGUE TABLE */}
                 {topicActiveTab === 'Table' && (
-                  <div className="p-6 space-y-4">
-                    {/* Top Search Bar */}
-                    <div className="w-full">
-                      <input
-                        type="text"
-                        placeholder="Search..."
-                        value={topicSearchTerm}
-                        onChange={(e) => setTopicSearchTerm(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 text-slate-800"
-                      />
+                  <div className="p-6 sm:p-8 space-y-5">
+                    {/* FILTERS & SEARCH */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                      {/* Search */}
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="Search topics or codes..."
+                          value={topicSearchTerm}
+                          onChange={(e) => setTopicSearchTerm(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all shadow-2xs"
+                        />
+                      </div>
+
+                      {/* Course Filter */}
+                      <div>
+                        <select
+                          value={topicCourseFilter}
+                          onChange={(e) => {
+                            setTopicCourseFilter(e.target.value);
+                            setTopicSubjectFilter('');
+                            setTopicChapterFilter('');
+                          }}
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all shadow-2xs cursor-pointer"
+                        >
+                          <option value="">All Courses ({courseList.length})</option>
+                          {courseList.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Subject Filter */}
+                      <div>
+                        <select
+                          value={topicSubjectFilter}
+                          onChange={(e) => {
+                            setTopicSubjectFilter(e.target.value);
+                            setTopicChapterFilter('');
+                          }}
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all shadow-2xs cursor-pointer"
+                        >
+                          <option value="">All Subjects</option>
+                          {(topicCourseFilter ? getAssignedSubjectsForCourse(topicCourseFilter) : subjects).map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.subjectName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Chapter Filter */}
+                      <div>
+                        <select
+                          value={topicChapterFilter}
+                          onChange={(e) => setTopicChapterFilter(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all shadow-2xs cursor-pointer"
+                        >
+                          <option value="">All Chapters</option>
+                          {chapterList
+                            .filter((ch) => {
+                              if (topicCourseFilter && String(ch.courseId) !== String(topicCourseFilter)) return false;
+                              if (topicSubjectFilter && String(ch.subjectId) !== String(topicSubjectFilter)) return false;
+                              return true;
+                            })
+                            .map((ch) => (
+                              <option key={ch.id} value={ch.id}>
+                                {ch.chapterName}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      {/* Status Filter */}
+                      <div>
+                        <select
+                          value={topicStatusFilter}
+                          onChange={(e) => setTopicStatusFilter(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all shadow-2xs cursor-pointer"
+                        >
+                          <option value="ALL">All Status</option>
+                          <option value="ACTIVE">Active Only</option>
+                          <option value="INACTIVE">Inactive Only</option>
+                        </select>
+                      </div>
                     </div>
 
-                    {/* Chapter Topic Table */}
-                    <div className="overflow-x-auto border border-slate-200 rounded">
+                    {/* TABLE */}
+                    <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-2xs bg-white">
                       <table className="w-full text-left text-xs text-slate-700">
-                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[11px]">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-black uppercase text-[11px] tracking-wider">
                           <tr>
-                            <th className="p-3 border-r border-slate-200 w-3/4">Chapter Topic</th>
-                            <th className="p-3 text-center w-1/4">ACTION</th>
+                            <th className="p-3.5">TOPIC NAME</th>
+                            <th className="p-3.5">COURSE</th>
+                            <th className="p-3.5">SUBJECT</th>
+                            <th className="p-3.5">CHAPTER</th>
+                            <th className="p-3.5 text-center">ORDER</th>
+                            <th className="p-3.5 text-center">STATUS</th>
+                            <th className="p-3.5 text-center">ACTIONS</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200 font-medium">
+                        <tbody className="divide-y divide-slate-100 font-medium">
                           {topicList
-                            .filter(t => t.topicName.toLowerCase().includes(topicSearchTerm.toLowerCase()))
-                            .map((t) => (
-                              <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
-                                <td className="p-3 border-r border-slate-200 text-slate-800">
-                                  {t.topicName}
+                            .filter((t) => {
+                              if (topicCourseFilter && String(t.courseId) !== String(topicCourseFilter)) return false;
+                              if (topicSubjectFilter && String(t.subjectId) !== String(topicSubjectFilter)) return false;
+                              if (topicChapterFilter && String(t.chapterId) !== String(topicChapterFilter)) return false;
+                              if (topicStatusFilter === 'ACTIVE' && t.isActive === false) return false;
+                              if (topicStatusFilter === 'INACTIVE' && t.isActive !== false) return false;
+                              if (topicSearchTerm.trim()) {
+                                const q = topicSearchTerm.toLowerCase();
+                                const nameMatch = (t.topicName || '').toLowerCase().includes(q);
+                                const codeMatch = (t.topicCode || '').toLowerCase().includes(q);
+                                const courseMatch = (t.courseTitle || '').toLowerCase().includes(q);
+                                const subMatch = (t.subjectName || '').toLowerCase().includes(q);
+                                const chMatch = (t.chapterName || '').toLowerCase().includes(q);
+                                return nameMatch || codeMatch || courseMatch || subMatch || chMatch;
+                              }
+                              return true;
+                            })
+                            .map((topic) => (
+                              <tr key={topic.id} className="hover:bg-slate-50/70 transition-colors">
+                                <td className="p-3.5">
+                                  <div className="font-extrabold text-slate-900 text-xs">
+                                    {topic.topicName}
+                                  </div>
+                                  {topic.topicCode && (
+                                    <div className="text-[10px] text-slate-400 font-semibold tracking-wide">
+                                      Code: {topic.topicCode}
+                                    </div>
+                                  )}
                                 </td>
-                                <td className="p-3 text-center space-x-2">
-                                  {/* Circular Edit Pencil Icon Button matching screenshot 2 */}
+
+                                <td className="p-3.5 text-slate-800">
+                                  <span className="font-bold text-slate-900">{topic.courseTitle}</span>
+                                  {topic.courseExam && (
+                                    <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-black bg-slate-100 text-slate-600 uppercase">
+                                      {topic.courseExam}
+                                    </span>
+                                  )}
+                                </td>
+
+                                <td className="p-3.5">
+                                  <span className="px-2 py-0.5 rounded text-[11px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200">
+                                    {topic.subjectName}
+                                  </span>
+                                </td>
+
+                                <td className="p-3.5">
+                                  <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700">
+                                    {topic.chapterName}
+                                  </span>
+                                </td>
+
+                                <td className="p-3.5 text-center font-bold text-slate-700">
+                                  {topic.displayOrder || 1}
+                                </td>
+
+                                <td className="p-3.5 text-center">
                                   <button
-                                    onClick={() => handleEditTopic(t)}
-                                    className="p-1.5 border border-slate-300 hover:border-slate-500 rounded-full text-slate-700 hover:bg-slate-100 transition-colors inline-flex items-center justify-center"
-                                    title="Edit Chapter Topic"
+                                    type="button"
+                                    onClick={() => handleToggleTopicStatus(topic)}
+                                    title="Click to toggle status"
+                                    className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wide uppercase transition-all cursor-pointer ${
+                                      topic.isActive !== false
+                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                                    }`}
+                                  >
+                                    {topic.isActive !== false ? 'Active' : 'Inactive'}
+                                  </button>
+                                </td>
+
+                                <td className="p-3.5 text-center space-x-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEditTopic(topic)}
+                                    className="p-1.5 border border-blue-200 hover:border-blue-400 rounded-lg text-blue-700 hover:bg-blue-50 transition-colors inline-flex items-center justify-center cursor-pointer shadow-2xs"
+                                    title="Edit Topic"
                                   >
                                     <Edit className="w-3.5 h-3.5" />
                                   </button>
-                                  {/* Delete Icon Button */}
                                   <button
-                                    onClick={() => handleDeleteTopic(t.id)}
-                                    className="p-1.5 border border-rose-200 hover:border-rose-400 rounded-full text-rose-600 hover:bg-rose-50 transition-colors inline-flex items-center justify-center"
-                                    title="Delete Chapter Topic"
+                                    type="button"
+                                    onClick={() => handleDeleteTopic(topic.id, topic.topicName)}
+                                    className="p-1.5 border border-rose-200 hover:border-rose-400 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors inline-flex items-center justify-center cursor-pointer shadow-2xs"
+                                    title="Delete Topic"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
@@ -2428,29 +3402,15 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                             ))}
                         </tbody>
                       </table>
-                    </div>
 
-                    {/* Table Footer Bar matching screenshot 2 */}
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 text-xs text-slate-500">
-                      <div>
-                        Showing 1 to {topicList.length} of 57 entries
-                      </div>
-
-                      <div className="flex items-center space-x-1">
-                        <button className="px-2.5 py-1 text-slate-400 border border-slate-200 rounded text-[11px] disabled:opacity-50">
-                          Previous
-                        </button>
-                        <button className="px-2.5 py-1 bg-[#1d4ed8] text-white font-bold rounded text-[11px]">
-                          1
-                        </button>
-                        <button className="px-2.5 py-1 text-slate-400 border border-slate-200 rounded text-[11px]">
-                          Next
-                        </button>
-                      </div>
+                      {topicList.length === 0 && !topicLoading && (
+                        <div className="p-8 text-center text-xs text-slate-400">
+                          No topics found. Click &quot;Add New Topic&quot; above to create one.
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
-
               </div>
             </div>
           )}
@@ -3190,6 +4150,57 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                         </select>
                       </div>
 
+                      {/* ASSIGNED SUBJECTS (MULTI-SELECT CHECKBOXES) */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                            ASSIGNED SUBJECTS
+                          </label>
+                          <span className="text-[11px] text-blue-600 font-bold">
+                            {(courseForm.selectedSubjectIds || []).length} selected
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mb-2">
+                          Select academic subjects for this course curriculum. Subjects are reusable across courses.
+                        </p>
+                        <div className="p-3 bg-white border border-slate-200 rounded-xl grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-52 overflow-y-auto shadow-2xs">
+                          {subjects
+                            .filter((sub) => sub.isActive !== false || (courseForm.selectedSubjectIds || []).includes(sub.id))
+                            .map((sub) => {
+                              const isChecked = (courseForm.selectedSubjectIds || []).includes(sub.id);
+                              return (
+                                <label
+                                  key={sub.id}
+                                  className={`flex items-center space-x-2 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                                    isChecked
+                                      ? 'bg-blue-50 border-blue-300 text-blue-900 font-bold shadow-2xs'
+                                      : 'bg-slate-50/50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      const current = courseForm.selectedSubjectIds || [];
+                                      const updated = e.target.checked
+                                        ? [...current, sub.id]
+                                        : current.filter((id) => id !== sub.id);
+                                      setCourseForm({ ...courseForm, selectedSubjectIds: updated });
+                                    }}
+                                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                  />
+                                  <span className="truncate">{sub.subjectName}</span>
+                                </label>
+                              );
+                            })}
+                          {subjects.length === 0 && (
+                            <div className="col-span-full text-center py-2 text-xs text-slate-400">
+                              No subjects available in Subject Master.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
                       {/* ORIGINAL PRICE & DISCOUNTED PRICE */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
@@ -3700,6 +4711,26 @@ export default function AdminDashboard({ initialTab = 'Exam Master' }) {
                                   <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
                                     {course.shortDescription || 'Full course curriculum with video lectures, DPPs, and mock tests.'}
                                   </p>
+
+                                  {/* Assigned Subjects Badges */}
+                                  <div className="flex flex-wrap gap-1 items-center pt-0.5">
+                                    {Array.isArray(course.subjectIds) && course.subjectIds.length > 0 ? (
+                                      course.subjectIds.map((subId) => {
+                                        const sub = subjects.find((s) => s.id === subId);
+                                        return (
+                                          <span
+                                            key={subId}
+                                            className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200"
+                                            title={sub ? sub.subjectName : `Subject #${subId}`}
+                                          >
+                                            {sub ? sub.subjectName : `Subject #${subId}`}
+                                          </span>
+                                        );
+                                      })
+                                    ) : (
+                                      <span className="text-[10px] text-slate-400 italic">No subjects assigned</span>
+                                    )}
+                                  </div>
 
                                   <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
                                     <div>

@@ -27,6 +27,12 @@ export async function GET(
       );
     }
 
+    // If accessed via an old historical slug, issue a permanent HTTP 301 redirect to canonical URL
+    if (exam.isCanonicalSlug === false) {
+      const canonicalUrl = new URL(`/api/exams/${exam.slug}`, req.url);
+      return NextResponse.redirect(canonicalUrl, 301);
+    }
+
     // Also get active published courses for this exam
     const courses = getPublicCourses({ exam: exam.examName });
 

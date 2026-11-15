@@ -6,6 +6,7 @@ export interface ExamRecord {
   id: number;
   examName: string;
   slug: string;
+  previousSlugs?: string[];
   description?: string;
   metaTitle?: string;
   metaDescription?: string;
@@ -172,6 +173,63 @@ export function readExamsFromDb(): ExamRecord[] {
   return CANONICAL_DEFAULT_EXAMS;
 }
 
+// In-process FIFO execution mutex to serialize concurrent mutations
+class AsyncMutex {
+  private queue: Promise<any> = Promise.resolve();
+
+  async run<T>(task: () => Promise<T> | T): Promise<T> {
+    const res = this.queue.then(async () => {
+      return await task();
+    });
+    this.queue = res.catch(() => {});
+    return res;
+  }
+}
+
+export const examMutex = new AsyncMutex();
+
+// Advisory cross-process file lock with timeout and stale lock recovery
+async function acquireFileLock(lockName: string, timeoutMs = 8000): Promise<() => Promise<void>> {
+  const paths = getExamDataPaths();
+  const primaryDir = path.dirname(paths[0]);
+  const lockFile = path.join(primaryDir, `.${lockName}.lock`);
+  const start = Date.now();
+  let fd: number | null = null;
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      fd = fs.openSync(lockFile, 'wx');
+      fs.writeFileSync(fd, `${process.pid}\n${Date.now()}`, 'utf-8');
+      break;
+    } catch (err: any) {
+      if (err.code === 'EEXIST') {
+        try {
+          const stats = fs.statSync(lockFile);
+          if (Date.now() - stats.mtimeMs > 10000) {
+            try { fs.unlinkSync(lockFile); } catch {}
+            continue;
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 20));
+      } else {
+        // Fallback gracefully if filesystem permissions prevent lockfile creation
+        return async () => {};
+      }
+    }
+  }
+
+  return async () => {
+    try {
+      if (fd !== null) {
+        try { fs.closeSync(fd); } catch {}
+      }
+      if (fs.existsSync(lockFile)) {
+        try { fs.unlinkSync(lockFile); } catch {}
+      }
+    } catch {}
+  };
+}
+
 // Write exams atomically to disk
 export function writeExamsToDb(exams: ExamRecord[]): void {
   const json = JSON.stringify(exams, null, 2);
@@ -183,7 +241,7 @@ export function writeExamsToDb(exams: ExamRecord[]): void {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      const tmpPath = `${filePath}.tmp.${Date.now()}`;
+      const tmpPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
       fs.writeFileSync(tmpPath, json, 'utf-8');
       fs.renameSync(tmpPath, filePath);
     } catch (err) {
@@ -262,153 +320,241 @@ export function getAdminExams(searchTerm?: string): Array<ExamRecord & { associa
     .sort((a, b) => (Number(a.displayIndex) || a.id) - (Number(b.displayIndex) || b.id));
 }
 
-// Find single exam by slug or ID
-export function getExamBySlugOrId(slugOrId: string | number, includeInactive = false): (ExamRecord & { associatedCoursesCount: number }) | null {
+// Find single exam by slug or ID (supports canonical slugs, IDs, and historical previousSlugs)
+export function getExamBySlugOrId(
+  slugOrId: string | number,
+  includeInactive = false
+): (ExamRecord & { associatedCoursesCount: number; isCanonicalSlug: boolean }) | null {
   if (!slugOrId) return null;
   const raw = decodeURIComponent(String(slugOrId)).trim();
   const normalized = raw.toLowerCase();
   const dashed = toExamSlug(normalized);
   const all = readExamsFromDb();
 
-  const found = all.find((e) => {
+  for (const e of all) {
+    if (!includeInactive && e.isActive === false) continue;
+
     const eId = String(e.id).trim();
     const eSlug = String(e.slug || '').trim().toLowerCase();
     const eNameDashed = toExamSlug(e.examName);
 
-    return (
+    // 1. Direct canonical match (ID, current slug, or dashed exam name)
+    if (
       eId === raw ||
       eId === dashed ||
       eSlug === normalized ||
       eSlug === dashed ||
       eNameDashed === dashed
-    );
-  });
+    ) {
+      return {
+        ...e,
+        associatedCoursesCount: countCoursesForExam(e.id, e.examName),
+        isCanonicalSlug: true,
+      };
+    }
 
-  if (!found) return null;
-  if (!includeInactive && found.isActive === false) return null;
+    // 2. Backward-compatible historical slug match
+    if (
+      Array.isArray(e.previousSlugs) &&
+      e.previousSlugs.some((ps) => {
+        const psDashed = toExamSlug(ps);
+        return psDashed === dashed || ps.toLowerCase() === normalized;
+      })
+    ) {
+      return {
+        ...e,
+        associatedCoursesCount: countCoursesForExam(e.id, e.examName),
+        isCanonicalSlug: false, // Old URL! Caller should issue HTTP 301 redirect to canonical slug
+      };
+    }
+  }
 
-  return {
-    ...found,
-    associatedCoursesCount: countCoursesForExam(found.id, found.examName),
-  };
+  return null;
 }
 
-// Check slug uniqueness
+// Check slug uniqueness across both active slugs and previousSlugs
 export function isExamSlugTaken(slug: string, excludeId?: number): boolean {
-  const target = toExamSlug(slug);
   const all = readExamsFromDb();
+  return isExamSlugTakenInternal(all, slug, excludeId);
+}
+
+function isExamSlugTakenInternal(all: ExamRecord[], slug: string, excludeId?: number): boolean {
+  const target = toExamSlug(slug);
   return all.some((e) => {
     if (excludeId && Number(e.id) === Number(excludeId)) return false;
-    return toExamSlug(e.slug) === target;
+    if (toExamSlug(e.slug) === target) return true;
+    if (Array.isArray(e.previousSlugs) && e.previousSlugs.some((ps) => toExamSlug(ps) === target)) {
+      return true;
+    }
+    return false;
   });
 }
 
-// Create new exam
-export function createExam(
+// Create new exam with serialized concurrency lock & fresh disk read
+export async function createExam(
   data: Partial<ExamRecord>,
   user = 'Admin'
-): { success: boolean; exam?: ExamRecord; error?: string } {
-  if (!data.examName?.trim()) {
-    return { success: false, error: 'Exam Name is required.' };
-  }
+): Promise<{ success: boolean; exam?: ExamRecord; error?: string }> {
+  return examMutex.run(async () => {
+    let releaseLock: (() => Promise<void>) | null = null;
+    try {
+      releaseLock = await acquireFileLock('exams');
 
-  const slug = toExamSlug(data.slug?.trim() || data.examName.trim());
-  if (!slug) {
-    return { success: false, error: 'A valid slug is required.' };
-  }
+      if (!data.examName?.trim()) {
+        return { success: false, error: 'Exam Name is required.' };
+      }
 
-  if (isExamSlugTaken(slug)) {
-    return { success: false, error: `The slug '${slug}' is already taken by another exam.` };
-  }
+      const slug = toExamSlug(data.slug?.trim() || data.examName.trim());
+      if (!slug) {
+        return { success: false, error: 'A valid slug is required.' };
+      }
 
-  const all = readExamsFromDb();
-  const newId = all.length > 0 ? Math.max(...all.map((e) => Number(e.id) || 0)) + 1 : 1;
-  const now = new Date().toISOString();
+      // Read fresh snapshot inside the locked critical section
+      const all = readExamsFromDb();
 
-  const newExam: ExamRecord = {
-    id: newId,
-    examName: data.examName.trim(),
-    slug: slug,
-    description: data.description?.trim() || '',
-    metaTitle: data.metaTitle?.trim() || `${data.examName.trim()} 2026 Preparation | 10Q Challenge`,
-    metaDescription: data.metaDescription?.trim() || `Comprehensive ${data.examName.trim()} preparation, test series & crash courses.`,
-    isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
-    displayIndex: Number(data.displayIndex) || newId,
-    createdAt: now,
-    updatedAt: now,
-    createdBy: user,
-    updatedBy: user,
-  };
+      if (isExamSlugTakenInternal(all, slug)) {
+        return { success: false, error: `The slug '${slug}' is already taken by another exam.` };
+      }
 
-  all.push(newExam);
-  writeExamsToDb(all);
+      // Safe ID generation inside lock: guaranteed unique, zero race conditions
+      const newId = all.length > 0 ? Math.max(...all.map((e) => Number(e.id) || 0)) + 1 : 1;
+      const now = new Date().toISOString();
 
-  return { success: true, exam: newExam };
+      const newExam: ExamRecord = {
+        id: newId,
+        examName: data.examName.trim(),
+        slug: slug,
+        previousSlugs: [],
+        description: data.description?.trim() || '',
+        metaTitle: data.metaTitle?.trim() || `${data.examName.trim()} 2026 Preparation | 10Q Challenge`,
+        metaDescription: data.metaDescription?.trim() || `Comprehensive ${data.examName.trim()} preparation, test series & crash courses.`,
+        isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
+        displayIndex: Number(data.displayIndex) || newId,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: user,
+        updatedBy: user,
+      };
+
+      all.push(newExam);
+      writeExamsToDb(all);
+
+      return { success: true, exam: newExam };
+    } catch (err: any) {
+      console.error('[createExam Exception]', err);
+      return { success: false, error: err?.message || 'Failed to create exam.' };
+    } finally {
+      if (releaseLock) {
+        await releaseLock();
+      }
+    }
+  });
 }
 
-// Update existing exam
-export function updateExam(
+// Update existing exam with slug history retention & serialized concurrency lock
+export async function updateExam(
   id: number,
   data: Partial<ExamRecord>,
   user = 'Admin'
-): { success: boolean; exam?: ExamRecord; error?: string } {
-  const all = readExamsFromDb();
-  const index = all.findIndex((e) => Number(e.id) === Number(id));
+): Promise<{ success: boolean; exam?: ExamRecord; error?: string }> {
+  return examMutex.run(async () => {
+    let releaseLock: (() => Promise<void>) | null = null;
+    try {
+      releaseLock = await acquireFileLock('exams');
 
-  if (index === -1) {
-    return { success: false, error: `Exam with ID ${id} not found.` };
-  }
+      // Read fresh snapshot inside lock
+      const all = readExamsFromDb();
+      const index = all.findIndex((e) => Number(e.id) === Number(id));
 
-  const existing = all[index];
-  const newSlug = data.slug ? toExamSlug(data.slug) : existing.slug;
+      if (index === -1) {
+        return { success: false, error: `Exam with ID ${id} not found.` };
+      }
 
-  if (newSlug !== existing.slug && isExamSlugTaken(newSlug, id)) {
-    return { success: false, error: `The slug '${newSlug}' is already in use by another exam.` };
-  }
+      const existing = all[index];
+      const newSlug = data.slug ? toExamSlug(data.slug) : existing.slug;
 
-  const updated: ExamRecord = {
-    ...existing,
-    ...data,
-    id: existing.id,
-    examName: data.examName !== undefined ? data.examName.trim() : existing.examName,
-    slug: newSlug,
-    description: data.description !== undefined ? data.description.trim() : existing.description,
-    metaTitle: data.metaTitle !== undefined ? data.metaTitle.trim() : existing.metaTitle,
-    metaDescription: data.metaDescription !== undefined ? data.metaDescription.trim() : existing.metaDescription,
-    isActive: data.isActive !== undefined ? Boolean(data.isActive) : existing.isActive,
-    displayIndex: data.displayIndex !== undefined ? Number(data.displayIndex) : existing.displayIndex,
-    updatedBy: user,
-    updatedAt: new Date().toISOString(),
-  };
+      if (newSlug !== existing.slug && isExamSlugTakenInternal(all, newSlug, id)) {
+        return { success: false, error: `The slug '${newSlug}' is already in use by another exam.` };
+      }
 
-  all[index] = updated;
-  writeExamsToDb(all);
+      // Maintain backward-compatible slug history
+      let previousSlugs = Array.isArray(existing.previousSlugs) ? [...existing.previousSlugs] : [];
+      if (newSlug !== existing.slug) {
+        // Append old slug, prevent duplicates, never add current slug to its own aliases
+        previousSlugs = Array.from(new Set([...previousSlugs, existing.slug])).filter(
+          (s) => s && s !== newSlug
+        );
+      }
 
-  return { success: true, exam: updated };
+      const updated: ExamRecord = {
+        ...existing,
+        ...data,
+        id: existing.id,
+        examName: data.examName !== undefined ? data.examName.trim() : existing.examName,
+        slug: newSlug,
+        previousSlugs: previousSlugs,
+        description: data.description !== undefined ? data.description.trim() : existing.description,
+        metaTitle: data.metaTitle !== undefined ? data.metaTitle.trim() : existing.metaTitle,
+        metaDescription: data.metaDescription !== undefined ? data.metaDescription.trim() : existing.metaDescription,
+        isActive: data.isActive !== undefined ? Boolean(data.isActive) : existing.isActive,
+        displayIndex: data.displayIndex !== undefined ? Number(data.displayIndex) : existing.displayIndex,
+        updatedBy: user,
+        updatedAt: new Date().toISOString(),
+      };
+
+      all[index] = updated;
+      writeExamsToDb(all);
+
+      return { success: true, exam: updated };
+    } catch (err: any) {
+      console.error('[updateExam Exception]', err);
+      return { success: false, error: err?.message || 'Failed to update exam.' };
+    } finally {
+      if (releaseLock) {
+        await releaseLock();
+      }
+    }
+  });
 }
 
-// Delete exam with strict dependency check
-export function deleteExam(id: number): { success: boolean; error?: string; associatedCoursesCount?: number } {
-  const all = readExamsFromDb();
-  const target = all.find((e) => Number(e.id) === Number(id));
+// Delete exam with strict dependency check & serialized concurrency lock
+export async function deleteExam(
+  id: number
+): Promise<{ success: boolean; error?: string; associatedCoursesCount?: number }> {
+  return examMutex.run(async () => {
+    let releaseLock: (() => Promise<void>) | null = null;
+    try {
+      releaseLock = await acquireFileLock('exams');
 
-  if (!target) {
-    return { success: false, error: `Exam with ID ${id} not found.` };
-  }
+      const all = readExamsFromDb();
+      const target = all.find((e) => Number(e.id) === Number(id));
 
-  // Mandatory dependency check: check if any courses are linked to this exam
-  const courseCount = countCoursesForExam(target.id, target.examName);
+      if (!target) {
+        return { success: false, error: `Exam with ID ${id} not found.` };
+      }
 
-  if (courseCount > 0) {
-    return {
-      success: false,
-      error: `Cannot delete exam '${target.examName}'. ${courseCount} course(s) are currently associated with it. Please reassign the courses or deactivate the exam instead.`,
-      associatedCoursesCount: courseCount,
-    };
-  }
+      // Mandatory dependency check: check if any courses are linked to this exam
+      const courseCount = countCoursesForExam(target.id, target.examName);
 
-  const filtered = all.filter((e) => Number(e.id) !== Number(id));
-  writeExamsToDb(filtered);
+      if (courseCount > 0) {
+        return {
+          success: false,
+          error: `Cannot delete exam '${target.examName}'. ${courseCount} course(s) are currently associated with it. Please reassign the courses or deactivate the exam instead.`,
+          associatedCoursesCount: courseCount,
+        };
+      }
 
-  return { success: true };
+      const filtered = all.filter((e) => Number(e.id) !== Number(id));
+      writeExamsToDb(filtered);
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('[deleteExam Exception]', err);
+      return { success: false, error: err?.message || 'Failed to delete exam.' };
+    } finally {
+      if (releaseLock) {
+        await releaseLock();
+      }
+    }
+  });
 }

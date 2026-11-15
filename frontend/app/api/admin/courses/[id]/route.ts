@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCourseBySlugOrId, updateCourse, deleteCourse } from '@/lib/db/courses';
+import { assignSubjectsToCourse } from '@/lib/db/subjects';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,10 +32,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const body = await req.json();
     const adminUser = req.headers.get('x-admin-user') || body.adminUser || 'Administrator';
 
-    const result = updateCourse(courseId, body, adminUser);
+    const result = await updateCourse(courseId, body, adminUser);
 
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+    }
+
+    // Persist Course-Subject many-to-many relationships if subjectIds passed
+    if (Array.isArray(body.subjectIds)) {
+      await assignSubjectsToCourse(courseId, body.subjectIds);
     }
 
     return NextResponse.json({
@@ -57,11 +63,16 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return NextResponse.json({ success: false, error: 'Invalid course ID.' }, { status: 400 });
     }
 
-    const result = deleteCourse(courseId);
+    const result = await deleteCourse(courseId);
 
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error }, { status: 404 });
     }
+
+    // Clean up course-subject joins for deleted course
+    try {
+      await assignSubjectsToCourse(courseId, []);
+    } catch {}
 
     return NextResponse.json({
       success: true,

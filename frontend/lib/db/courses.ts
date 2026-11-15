@@ -8,6 +8,7 @@ export interface CourseRecord {
   description?: string;
   exam: string;
   examId?: number;
+  subjectIds?: number[];
   originalPrice: number | string;
   discountedPrice: number | string;
   price: number | string;
@@ -148,6 +149,62 @@ export function readCoursesFromDb(): CourseRecord[] {
   return [];
 }
 
+// In-process FIFO execution mutex to serialize concurrent course mutations
+class AsyncMutex {
+  private queue: Promise<any> = Promise.resolve();
+
+  async run<T>(task: () => Promise<T> | T): Promise<T> {
+    const res = this.queue.then(async () => {
+      return await task();
+    });
+    this.queue = res.catch(() => {});
+    return res;
+  }
+}
+
+export const courseMutex = new AsyncMutex();
+
+// Advisory cross-process file lock with timeout and stale lock recovery
+async function acquireFileLock(lockName: string, timeoutMs = 8000): Promise<() => Promise<void>> {
+  const paths = getDataPaths();
+  const primaryDir = path.dirname(paths[0]);
+  const lockFile = path.join(primaryDir, `.${lockName}.lock`);
+  const start = Date.now();
+  let fd: number | null = null;
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      fd = fs.openSync(lockFile, 'wx');
+      fs.writeFileSync(fd, `${process.pid}\n${Date.now()}`, 'utf-8');
+      break;
+    } catch (err: any) {
+      if (err.code === 'EEXIST') {
+        try {
+          const stats = fs.statSync(lockFile);
+          if (Date.now() - stats.mtimeMs > 10000) {
+            try { fs.unlinkSync(lockFile); } catch {}
+            continue;
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 20));
+      } else {
+        return async () => {};
+      }
+    }
+  }
+
+  return async () => {
+    try {
+      if (fd !== null) {
+        try { fs.closeSync(fd); } catch {}
+      }
+      if (fs.existsSync(lockFile)) {
+        try { fs.unlinkSync(lockFile); } catch {}
+      }
+    } catch {}
+  };
+}
+
 // Write courses to disk atomically across all valid data paths
 export function writeCoursesToDb(courses: CourseRecord[]): void {
   const json = JSON.stringify(courses, null, 2);
@@ -159,7 +216,7 @@ export function writeCoursesToDb(courses: CourseRecord[]): void {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      const tmpPath = `${filePath}.tmp.${Date.now()}`;
+      const tmpPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
       fs.writeFileSync(tmpPath, json, 'utf-8');
       fs.renameSync(tmpPath, filePath);
     } catch (err) {
@@ -311,150 +368,205 @@ export function isSlugTaken(slug: string, excludeId?: number): boolean {
   });
 }
 
-// Create new course
-export function createCourse(data: Partial<CourseRecord> & Record<string, any>, user = 'Admin'): { success: boolean; course?: CourseRecord; error?: string } {
-  if (!data.title?.trim()) {
-    return { success: false, error: 'Course title is required.' };
-  }
-  const examVal = (data.exam || data.examTag || 'BITSAT').trim();
-  if (!examVal) {
-    return { success: false, error: 'Exam category is required.' };
-  }
+// Create new course with serialized concurrency lock & fresh disk read
+export async function createCourse(
+  data: Partial<CourseRecord> & Record<string, any>,
+  user = 'Admin'
+): Promise<{ success: boolean; course?: CourseRecord; error?: string }> {
+  return courseMutex.run(async () => {
+    let releaseLock: (() => Promise<void>) | null = null;
+    try {
+      releaseLock = await acquireFileLock('courses');
 
-  const slug = toSlug(data.slug?.trim() || data.title.trim());
-  if (isSlugTaken(slug)) {
-    return { success: false, error: `The slug '${slug}' is already in use by another course.` };
-  }
+      if (!data.title?.trim()) {
+        return { success: false, error: 'Course title is required.' };
+      }
+      const examVal = (data.exam || data.examTag || 'BITSAT').trim();
+      if (!examVal) {
+        return { success: false, error: 'Exam category is required.' };
+      }
 
-  const all = readCoursesFromDb();
-  const newId = all.length > 0 ? Math.max(...all.map((c) => Number(c.id) || 0)) + 1 : 1;
-  const now = new Date().toISOString();
+      const slug = toSlug(data.slug?.trim() || data.title.trim());
+      if (isSlugTaken(slug)) {
+        return { success: false, error: `The slug '${slug}' is already in use by another course.` };
+      }
 
-  const priceVal = data.discountedPrice || data.discountPrice || data.price || data.originalPrice || '4999';
-  const origPriceVal = data.originalPrice || priceVal;
-  const discountVal = data.discount || computeDiscountString(origPriceVal, priceVal);
+      // Fresh read inside lock
+      const all = readCoursesFromDb();
+      // Safe ID generation inside lock
+      const newId = all.length > 0 ? Math.max(...all.map((c) => Number(c.id) || 0)) + 1 : 1;
+      const now = new Date().toISOString();
 
-  const imageVal = data.image || data.thumbnailUrl || '/site/assets/img/banner.png';
-  const bannerVal = data.bannerImage || data.bannerUrl || imageVal;
+      const priceVal = data.discountedPrice || data.discountPrice || data.price || data.originalPrice || '4999';
+      const origPriceVal = data.originalPrice || priceVal;
+      const discountVal = data.discount || computeDiscountString(origPriceVal, priceVal);
 
-  const newCourse: CourseRecord & Record<string, any> = {
-    id: newId,
-    title: data.title.trim(),
-    shortDescription: data.shortDescription?.trim() || data.description?.trim() || '',
-    description: data.description?.trim() || data.shortDescription?.trim() || '',
-    exam: examVal,
-    examTag: examVal,
-    examId: data.examId ? Number(data.examId) : undefined,
-    originalPrice: origPriceVal,
-    discountedPrice: priceVal,
-    discountPrice: Number(priceVal) || 4999,
-    price: priceVal,
-    discount: discountVal,
-    expiryDate: data.expiryDate || '',
-    enrolledStudent: data.enrolledStudent || '1250',
-    displayIndex: data.displayIndex || '1',
-    additionalDetails: data.additionalDetails?.trim() || '',
-    image: imageVal,
-    thumbnailUrl: imageVal,
-    bannerImage: bannerVal,
-    bannerUrl: bannerVal,
-    altCourseImage: data.altCourseImage?.trim() || data.title.trim(),
-    altBannerImage: data.altBannerImage?.trim() || data.title.trim(),
-    scheduleFile: data.scheduleFile?.trim() || '',
-    slug: slug,
-    metaTitle: data.metaTitle?.trim() || `${data.title.trim()} | 10Q Challenge`,
-    metaDescription: data.metaDescription?.trim() || data.shortDescription?.trim() || '',
-    courseLink: data.courseLink?.trim() || `/course-detail/${slug}`,
-    isShowInIndex: data.isShowInIndex !== undefined ? Boolean(data.isShowInIndex) : true,
-    isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
-    isShowInMentorship: Boolean(data.isShowInMentorship),
-    isShowInTestSeries: Boolean(data.isShowInTestSeries),
-    rating: data.rating || 4.9,
-    reviewsCount: Number(data.reviewsCount || data.reviewCount) || 128,
-    studentsCount: Number(data.enrolledStudent || data.enrolledCount) || 1250,
-    duration: data.duration || '60+ Hours Live & Recorded',
-    lectures: data.lectures || '80+ Lectures',
-    tests: data.tests || '20+ Mock Tests',
-    tag: data.tag || 'NEW BATCH',
-    language: data.language || 'English + Hinglish',
-    validity: data.validity || 'Valid Till Exam 2026',
-    mentor: data.mentor || 'Harshal Jain',
-    features: Array.isArray(data.features) ? data.features : ['Live Demo Access', 'Formula PDF Notes', '24/7 Doubt Resolution'],
-    subjects: Array.isArray(data.subjects) ? data.subjects : [],
-    chapters: Array.isArray(data.chapters) ? data.chapters : [],
-    createdBy: user,
-    updatedBy: user,
-    createdAt: now,
-    updatedAt: now,
-  };
+      const imageVal = data.image || data.thumbnailUrl || '/site/assets/img/banner.png';
+      const bannerVal = data.bannerImage || data.bannerUrl || imageVal;
 
-  all.unshift(newCourse);
-  writeCoursesToDb(all);
+      const newCourse: CourseRecord & Record<string, any> = {
+        id: newId,
+        title: data.title.trim(),
+        shortDescription: data.shortDescription?.trim() || data.description?.trim() || '',
+        description: data.description?.trim() || data.shortDescription?.trim() || '',
+        exam: examVal,
+        examTag: examVal,
+        examId: data.examId ? Number(data.examId) : undefined,
+        subjectIds: Array.isArray(data.subjectIds) ? data.subjectIds.map(Number).filter(Boolean) : undefined,
+        originalPrice: origPriceVal,
+        discountedPrice: priceVal,
+        discountPrice: Number(priceVal) || 4999,
+        price: priceVal,
+        discount: discountVal,
+        expiryDate: data.expiryDate || '',
+        enrolledStudent: data.enrolledStudent || '1250',
+        displayIndex: data.displayIndex || '1',
+        additionalDetails: data.additionalDetails?.trim() || '',
+        image: imageVal,
+        thumbnailUrl: imageVal,
+        bannerImage: bannerVal,
+        bannerUrl: bannerVal,
+        altCourseImage: data.altCourseImage?.trim() || data.title.trim(),
+        altBannerImage: data.altBannerImage?.trim() || data.title.trim(),
+        scheduleFile: data.scheduleFile?.trim() || '',
+        slug: slug,
+        metaTitle: data.metaTitle?.trim() || `${data.title.trim()} | 10Q Challenge`,
+        metaDescription: data.metaDescription?.trim() || data.shortDescription?.trim() || '',
+        courseLink: data.courseLink?.trim() || `/course-detail/${slug}`,
+        isShowInIndex: data.isShowInIndex !== undefined ? Boolean(data.isShowInIndex) : true,
+        isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
+        isShowInMentorship: Boolean(data.isShowInMentorship),
+        isShowInTestSeries: Boolean(data.isShowInTestSeries),
+        rating: data.rating || 4.9,
+        reviewsCount: Number(data.reviewsCount || data.reviewCount) || 128,
+        studentsCount: Number(data.enrolledStudent || data.enrolledCount) || 1250,
+        duration: data.duration || '60+ Hours Live & Recorded',
+        lectures: data.lectures || '80+ Lectures',
+        tests: data.tests || '20+ Mock Tests',
+        tag: data.tag || 'NEW BATCH',
+        language: data.language || 'English + Hinglish',
+        validity: data.validity || 'Valid Till Exam 2026',
+        mentor: data.mentor || 'Harshal Jain',
+        features: Array.isArray(data.features) ? data.features : ['Live Demo Access', 'Formula PDF Notes', '24/7 Doubt Resolution'],
+        subjects: Array.isArray(data.subjects) ? data.subjects : [],
+        chapters: Array.isArray(data.chapters) ? data.chapters : [],
+        createdBy: user,
+        updatedBy: user,
+        createdAt: now,
+        updatedAt: now,
+      };
 
-  return { success: true, course: newCourse };
+      all.unshift(newCourse);
+      writeCoursesToDb(all);
+
+      return { success: true, course: newCourse };
+    } catch (err: any) {
+      console.error('[createCourse Exception]', err);
+      return { success: false, error: err?.message || 'Failed to create course.' };
+    } finally {
+      if (releaseLock) {
+        await releaseLock();
+      }
+    }
+  });
 }
 
-// Update existing course
-export function updateCourse(id: number, data: Partial<CourseRecord> & Record<string, any>, user = 'Admin'): { success: boolean; course?: CourseRecord; error?: string } {
-  const all = readCoursesFromDb();
-  const index = all.findIndex((c) => Number(c.id) === Number(id));
+// Update existing course with serialized concurrency lock & fresh disk read
+export async function updateCourse(
+  id: number,
+  data: Partial<CourseRecord> & Record<string, any>,
+  user = 'Admin'
+): Promise<{ success: boolean; course?: CourseRecord; error?: string }> {
+  return courseMutex.run(async () => {
+    let releaseLock: (() => Promise<void>) | null = null;
+    try {
+      releaseLock = await acquireFileLock('courses');
 
-  if (index === -1) {
-    return { success: false, error: `Course with ID ${id} not found.` };
-  }
+      const all = readCoursesFromDb();
+      const index = all.findIndex((c) => Number(c.id) === Number(id));
 
-  const existing = all[index] as any;
-  const newSlug = data.slug ? toSlug(data.slug) : existing.slug;
+      if (index === -1) {
+        return { success: false, error: `Course with ID ${id} not found.` };
+      }
 
-  if (newSlug !== existing.slug && isSlugTaken(newSlug, id)) {
-    return { success: false, error: `The slug '${newSlug}' is already in use by another course.` };
-  }
+      const existing = all[index] as any;
+      const newSlug = data.slug ? toSlug(data.slug) : existing.slug;
 
-  const priceVal = data.discountedPrice || data.discountPrice || data.price || existing.discountedPrice || existing.price;
-  const origPriceVal = data.originalPrice || existing.originalPrice || priceVal;
-  const discountVal = data.discount || computeDiscountString(origPriceVal, priceVal);
+      if (newSlug !== existing.slug && isSlugTaken(newSlug, id)) {
+        return { success: false, error: `The slug '${newSlug}' is already in use by another course.` };
+      }
 
-  const examVal = (data.exam || data.examTag || existing.exam || existing.examTag || 'BITSAT').trim();
-  const imageVal = data.image || data.thumbnailUrl || existing.image || existing.thumbnailUrl;
-  const bannerVal = data.bannerImage || data.bannerUrl || data.image || existing.bannerImage || existing.bannerUrl || imageVal;
+      const priceVal = data.discountedPrice || data.discountPrice || data.price || existing.discountedPrice || existing.price;
+      const origPriceVal = data.originalPrice || existing.originalPrice || priceVal;
+      const discountVal = data.discount || computeDiscountString(origPriceVal, priceVal);
 
-  const updated: CourseRecord & Record<string, any> = {
-    ...existing,
-    ...data,
-    id: existing.id,
-    title: data.title !== undefined ? data.title.trim() : existing.title,
-    slug: newSlug,
-    exam: examVal,
-    examTag: examVal,
-    examId: data.examId ? Number(data.examId) : existing.examId,
-    price: priceVal,
-    discountedPrice: priceVal,
-    discountPrice: Number(priceVal) || 4999,
-    originalPrice: origPriceVal,
-    discount: discountVal,
-    image: imageVal,
-    thumbnailUrl: imageVal,
-    bannerImage: bannerVal,
-    bannerUrl: bannerVal,
-    updatedBy: user,
-    updatedAt: new Date().toISOString(),
-  };
+      const examVal = (data.exam || data.examTag || existing.exam || existing.examTag || 'BITSAT').trim();
+      const imageVal = data.image || data.thumbnailUrl || existing.image || existing.thumbnailUrl;
+      const bannerVal = data.bannerImage || data.bannerUrl || data.image || existing.bannerImage || existing.bannerUrl || imageVal;
 
-  all[index] = updated;
-  writeCoursesToDb(all);
+      const updated: CourseRecord & Record<string, any> = {
+        ...existing,
+        ...data,
+        id: existing.id,
+        title: data.title !== undefined ? data.title.trim() : existing.title,
+        slug: newSlug,
+        exam: examVal,
+        examTag: examVal,
+        examId: data.examId ? Number(data.examId) : existing.examId,
+        subjectIds: data.subjectIds !== undefined ? (Array.isArray(data.subjectIds) ? data.subjectIds.map(Number).filter(Boolean) : []) : existing.subjectIds,
+        price: priceVal,
+        discountedPrice: priceVal,
+        discountPrice: Number(priceVal) || 4999,
+        originalPrice: origPriceVal,
+        discount: discountVal,
+        image: imageVal,
+        thumbnailUrl: imageVal,
+        bannerImage: bannerVal,
+        bannerUrl: bannerVal,
+        updatedBy: user,
+        updatedAt: new Date().toISOString(),
+      };
 
-  return { success: true, course: updated };
+      all[index] = updated;
+      writeCoursesToDb(all);
+
+      return { success: true, course: updated };
+    } catch (err: any) {
+      console.error('[updateCourse Exception]', err);
+      return { success: false, error: err?.message || 'Failed to update course.' };
+    } finally {
+      if (releaseLock) {
+        await releaseLock();
+      }
+    }
+  });
 }
 
-// Delete course by ID
-export function deleteCourse(id: number): { success: boolean; error?: string } {
-  const all = readCoursesFromDb();
-  const filtered = all.filter((c) => Number(c.id) !== Number(id));
+// Delete course by ID with serialized concurrency lock
+export async function deleteCourse(
+  id: number
+): Promise<{ success: boolean; error?: string }> {
+  return courseMutex.run(async () => {
+    let releaseLock: (() => Promise<void>) | null = null;
+    try {
+      releaseLock = await acquireFileLock('courses');
 
-  if (filtered.length === all.length) {
-    return { success: false, error: `Course with ID ${id} not found.` };
-  }
+      const all = readCoursesFromDb();
+      const filtered = all.filter((c) => Number(c.id) !== Number(id));
 
-  writeCoursesToDb(filtered);
-  return { success: true };
+      if (filtered.length === all.length) {
+        return { success: false, error: `Course with ID ${id} not found.` };
+      }
+
+      writeCoursesToDb(filtered);
+      return { success: true };
+    } catch (err: any) {
+      console.error('[deleteCourse Exception]', err);
+      return { success: false, error: err?.message || 'Failed to delete course.' };
+    } finally {
+      if (releaseLock) {
+        await releaseLock();
+      }
+    }
+  });
 }

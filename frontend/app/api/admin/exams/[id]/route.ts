@@ -42,7 +42,7 @@ export async function PUT(
     const body = await req.json();
     const adminUser = req.headers.get('x-admin-user') || body.adminUser || 'Administrator';
 
-    const result = updateExam(numId, body, adminUser);
+    const result = await updateExam(numId, body, adminUser);
 
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error }, { status: 400 });
@@ -71,7 +71,7 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Valid numeric ID required.' }, { status: 400 });
     }
 
-    const result = deleteExam(numId);
+    const result = await deleteExam(numId);
 
     if (!result.success) {
       // 400 Bad Request with dependency error
