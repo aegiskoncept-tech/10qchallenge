@@ -57,10 +57,11 @@ export const CANONICAL_DEFAULT_DOUBTS: DoubtRecord[] = [
 
 function getDoubtDataPaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir = process.env.DATA_STORE_DIR;
   const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, 'data', 'doubts.json'), path.join(persistentDir, 'doubts.json')] : []),
     path.join(cwd, 'data', 'doubts.json'),
     path.join(cwd, 'frontend', 'data', 'doubts.json'),
-    path.join(cwd, '..', 'data', 'doubts.json'),
   ];
   const uniqueDirs = new Set<string>();
   const validPaths: string[] = [];

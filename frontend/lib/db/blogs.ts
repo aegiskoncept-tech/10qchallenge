@@ -70,10 +70,11 @@ Understanding the distinct exam architectures is essential for optimizing your r
 
 function getBlogPaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir = process.env.DATA_STORE_DIR;
   const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, 'data', 'blogs.json'), path.join(persistentDir, 'blogs.json')] : []),
     path.join(cwd, 'data', 'blogs.json'),
     path.join(cwd, 'frontend', 'data', 'blogs.json'),
-    path.join(cwd, '..', 'data', 'blogs.json'),
   ];
   const uniqueDirs = new Set<string>();
   const validPaths: string[] = [];

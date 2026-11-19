@@ -78,10 +78,11 @@ export const CANONICAL_DEFAULT_SEO: SeoConfigRecord[] = [
 
 function getSeoDataPaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir = process.env.DATA_STORE_DIR;
   const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, 'data', 'seo-configs.json'), path.join(persistentDir, 'seo-configs.json')] : []),
     path.join(cwd, 'data', 'seo-configs.json'),
     path.join(cwd, 'frontend', 'data', 'seo-configs.json'),
-    path.join(cwd, '..', 'data', 'seo-configs.json'),
   ];
   const uniqueDirs = new Set<string>();
   const validPaths: string[] = [];

@@ -131,10 +131,11 @@ export const CANONICAL_DEFAULT_CHAPTERS: ChapterRecord[] = [
 // Helper to determine persistent storage file paths for chapters
 function getChapterDataPaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir = process.env.DATA_STORE_DIR;
   const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, 'data', 'chapters.json'), path.join(persistentDir, 'chapters.json')] : []),
     path.join(cwd, 'data', 'chapters.json'),
     path.join(cwd, 'frontend', 'data', 'chapters.json'),
-    path.join(cwd, '..', 'data', 'chapters.json'),
   ];
 
   const uniqueDirs = new Set<string>();

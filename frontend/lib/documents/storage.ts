@@ -21,9 +21,10 @@ export const MAX_PDF_UPLOAD_SIZE = 25 * 1024 * 1024;
  */
 export function getPrivateDocumentStorageDir(): string {
   const cwd = process.cwd();
+  const persistentDir = process.env.DATA_STORE_DIR;
   const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, 'storage', 'documents'), path.join(persistentDir, 'documents')] : []),
     path.join(cwd, 'storage', 'documents'),
-    path.join(cwd, '..', 'storage', 'documents'),
     path.join(cwd, 'frontend', 'storage', 'documents'),
   ];
 
@@ -33,8 +34,8 @@ export function getPrivateDocumentStorageDir(): string {
     }
   }
 
-  // Fallback to default and create if missing
-  const fallback = path.join(cwd, 'storage', 'documents');
+  // Fallback to persistent directory if configured or default and create if missing
+  const fallback = persistentDir ? path.join(persistentDir, 'storage', 'documents') : path.join(cwd, 'storage', 'documents');
   if (!fs.existsSync(fallback)) {
     fs.mkdirSync(fallback, { recursive: true });
   }

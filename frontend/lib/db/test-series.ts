@@ -190,10 +190,11 @@ async function acquireTestSeriesFileLock(lockName = 'test-series', timeoutMs = 8
 
 function getTestSeriesDataPaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir = process.env.DATA_STORE_DIR;
   const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, 'data', 'test-series.json'), path.join(persistentDir, 'test-series.json')] : []),
     path.join(cwd, 'data', 'test-series.json'),
     path.join(cwd, 'frontend', 'data', 'test-series.json'),
-    path.join(cwd, '..', 'data', 'test-series.json'),
   ];
   const uniqueDirs = new Set<string>();
   const validPaths: string[] = [];

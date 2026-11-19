@@ -43,10 +43,11 @@ export const CANONICAL_DEFAULT_NOTIFICATIONS: NotificationRecord[] = [
 
 function getNotifPaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir = process.env.DATA_STORE_DIR;
   const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, 'data', 'notifications.json'), path.join(persistentDir, 'notifications.json')] : []),
     path.join(cwd, 'data', 'notifications.json'),
     path.join(cwd, 'frontend', 'data', 'notifications.json'),
-    path.join(cwd, '..', 'data', 'notifications.json'),
   ];
   const uniqueDirs = new Set<string>();
   const validPaths: string[] = [];

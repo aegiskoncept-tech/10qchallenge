@@ -95,10 +95,11 @@ export const CANONICAL_DEFAULT_EXAMS: ExamRecord[] = [
 // Helper to determine persistent storage file paths
 function getExamDataPaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir = process.env.DATA_STORE_DIR;
   const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, 'data', 'exams.json'), path.join(persistentDir, 'exams.json')] : []),
     path.join(cwd, 'data', 'exams.json'),
     path.join(cwd, 'frontend', 'data', 'exams.json'),
-    path.join(cwd, '..', 'data', 'exams.json'),
   ];
 
   const uniqueDirs = new Set<string>();

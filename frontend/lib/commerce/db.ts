@@ -25,9 +25,18 @@ export async function getCommerceDb(): Promise<CommerceDbClient> {
     if (!pgPoolInstance) {
       const { Pool } = await import('pg');
       const isLocalhost = databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1');
+      let sslConfig: any = false;
+      if (!isLocalhost) {
+        const caCert = process.env.DATABASE_SSL_CA || (process.env.PGSSLROOTCERT && fs.existsSync(process.env.PGSSLROOTCERT) ? fs.readFileSync(process.env.PGSSLROOTCERT, 'utf8') : null);
+        const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false' ? false : true;
+        sslConfig = {
+          rejectUnauthorized,
+          ...(caCert ? { ca: caCert } : {})
+        };
+      }
       pgPoolInstance = new Pool({
         connectionString: databaseUrl,
-        ssl: isLocalhost ? false : { rejectUnauthorized: false },
+        ssl: sslConfig,
         max: 10,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 10000,

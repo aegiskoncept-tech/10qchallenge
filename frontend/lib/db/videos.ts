@@ -119,10 +119,11 @@ export const videoMutex = new VideoAsyncMutex();
 
 function getVideoDataPaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir = process.env.DATA_STORE_DIR;
   const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, 'data', 'videos.json'), path.join(persistentDir, 'videos.json')] : []),
     path.join(cwd, 'data', 'videos.json'),
     path.join(cwd, 'frontend', 'data', 'videos.json'),
-    path.join(cwd, '..', 'data', 'videos.json'),
   ];
 
   const uniqueDirs = new Set<string>();

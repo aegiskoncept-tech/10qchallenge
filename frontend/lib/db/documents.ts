@@ -118,10 +118,11 @@ export const documentMutex = new DocumentAsyncMutex();
 
 function getDocDataPaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir = process.env.DATA_STORE_DIR;
   const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, 'data', 'documents.json'), path.join(persistentDir, 'documents.json')] : []),
     path.join(cwd, 'data', 'documents.json'),
     path.join(cwd, 'frontend', 'data', 'documents.json'),
-    path.join(cwd, '..', 'data', 'documents.json'),
   ];
   const uniqueDirs = new Set<string>();
   const validPaths: string[] = [];

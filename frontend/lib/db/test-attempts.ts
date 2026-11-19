@@ -137,10 +137,11 @@ async function acquireAttemptFileLock(lockName = 'test-attempts', timeoutMs = 80
 
 function getTestAttemptsDataPaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir = process.env.DATA_STORE_DIR;
   const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, 'data', 'test-attempts.json'), path.join(persistentDir, 'test-attempts.json')] : []),
     path.join(cwd, 'data', 'test-attempts.json'),
     path.join(cwd, 'frontend', 'data', 'test-attempts.json'),
-    path.join(cwd, '..', 'data', 'test-attempts.json'),
   ];
   const uniqueDirs = new Set<string>();
   const validPaths: string[] = [];

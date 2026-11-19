@@ -137,10 +137,11 @@ export const CANONICAL_DEFAULT_QUESTIONS: QuestionRecord[] = [
 // Helper to determine persistent storage file paths for questions
 function getQuestionDataPaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir = process.env.DATA_STORE_DIR;
   const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, 'data', 'questions.json'), path.join(persistentDir, 'questions.json')] : []),
     path.join(cwd, 'data', 'questions.json'),
     path.join(cwd, 'frontend', 'data', 'questions.json'),
-    path.join(cwd, '..', 'data', 'questions.json'),
   ];
 
   const uniqueDirs = new Set<string>();
