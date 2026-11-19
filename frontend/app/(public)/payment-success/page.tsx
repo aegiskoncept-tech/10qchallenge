@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircle2, Download, ArrowRight, BookOpen, ShieldCheck, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-export default function PaymentSuccessPage() {
+function SuccessContent() {
   const searchParams = useSearchParams();
   const txnId = searchParams.get('txnId') || '10Q_TXN_84920';
   const orderId = searchParams.get('orderId') || 'ORD-9823';
@@ -100,5 +100,13 @@ export default function PaymentSuccessPage() {
         </Link>
       </div>
     </div>
+  );
+}
+
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense fallback={<div className="max-w-2xl mx-auto px-4 py-16 text-center text-sm text-[#6E6990]">Loading confirmation...</div>}>
+      <SuccessContent />
+    </Suspense>
   );
 }

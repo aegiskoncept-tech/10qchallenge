@@ -69,6 +69,15 @@ export interface CourseRecord {
 
 // Find primary and secondary file paths for storage synchronization
 function getDataPaths(): string[] {
+  if (process.env.DATA_STORE_DIR) {
+    const custom = path.resolve(process.env.DATA_STORE_DIR, 'courses.json');
+    const dir = path.dirname(custom);
+    if (!fs.existsSync(dir)) {
+      try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+    }
+    return [custom];
+  }
+
   const cwd = process.cwd();
   const candidates = [
     path.join(cwd, 'data', 'courses.json'),
@@ -328,9 +337,17 @@ export function getAdminCourses(searchTerm?: string): CourseRecord[] {
     .sort((a, b) => (Number(a.displayIndex) || 999) - (Number(b.displayIndex) || 999));
 }
 
-// Find single course by slug or ID
-export function getCourseBySlugOrId(slugOrId: string | number, includeInactive = false): CourseRecord | null {
+// Find single course by slug or ID with options for student/admin access
+export function getCourseBySlugOrId(
+  slugOrId: string | number,
+  options?: boolean | { includeInactive?: boolean; allowArchived?: boolean }
+): CourseRecord | null {
   if (!slugOrId) return null;
+
+  const includeInactive =
+    typeof options === 'boolean'
+      ? options
+      : Boolean(options?.includeInactive || options?.allowArchived);
 
   const raw = decodeURIComponent(String(slugOrId)).trim();
   const normalized = raw.toLowerCase();
@@ -358,6 +375,20 @@ export function getCourseBySlugOrId(slugOrId: string | number, includeInactive =
   return found;
 }
 
+// Purchase availability rule: Separates public purchasing from student classroom access
+export function isCoursePurchasable(course: CourseRecord): { purchasable: boolean; reason?: string } {
+  if (course.isActive === false) {
+    return { purchasable: false, reason: 'This course is archived and no longer accepting new enrollments.' };
+  }
+  if (course.expiryDate) {
+    const expiry = new Date(course.expiryDate);
+    if (!isNaN(expiry.getTime()) && expiry.getTime() < Date.now()) {
+      return { purchasable: false, reason: 'This course batch validity has expired.' };
+    }
+  }
+  return { purchasable: true };
+}
+
 // Check slug uniqueness (excluding optional existing course ID)
 export function isSlugTaken(slug: string, excludeId?: number): boolean {
   const target = toSlug(slug);
@@ -381,9 +412,30 @@ export async function createCourse(
       if (!data.title?.trim()) {
         return { success: false, error: 'Course title is required.' };
       }
-      const examVal = (data.exam || data.examTag || 'BITSAT').trim();
+      const examVal = (data.exam || data.examTag || '').trim();
       if (!examVal) {
         return { success: false, error: 'Exam category is required.' };
+      }
+
+      // Numerical price validation
+      if (data.originalPrice !== undefined && data.originalPrice !== '') {
+        const numOrig = Number(String(data.originalPrice).replace(/[^0-9.-]/g, ''));
+        if (numOrig < 0) {
+          return { success: false, error: 'Original price cannot be negative.' };
+        }
+      }
+      if (data.discountedPrice !== undefined && data.discountedPrice !== '') {
+        const numDisc = Number(String(data.discountedPrice).replace(/[^0-9.-]/g, ''));
+        if (numDisc < 0) {
+          return { success: false, error: 'Discounted price cannot be negative.' };
+        }
+      }
+      if (data.originalPrice !== undefined && data.originalPrice !== '' && data.discountedPrice !== undefined && data.discountedPrice !== '') {
+        const numOrig = Number(String(data.originalPrice).replace(/[^0-9.-]/g, ''));
+        const numDisc = Number(String(data.discountedPrice).replace(/[^0-9.-]/g, ''));
+        if (!isNaN(numOrig) && !isNaN(numDisc) && numOrig > 0 && numDisc > numOrig) {
+          return { success: false, error: 'Discounted price cannot exceed original price.' };
+        }
       }
 
       const slug = toSlug(data.slug?.trim() || data.title.trim());
@@ -490,6 +542,14 @@ export async function updateCourse(
       }
 
       const existing = all[index] as any;
+
+      if (data.title !== undefined && !data.title.trim()) {
+        return { success: false, error: 'Course title cannot be empty.' };
+      }
+      if (data.exam !== undefined && !data.exam.trim()) {
+        return { success: false, error: 'Exam category cannot be empty.' };
+      }
+
       const newSlug = data.slug ? toSlug(data.slug) : existing.slug;
 
       if (newSlug !== existing.slug && isSlugTaken(newSlug, id)) {
@@ -498,6 +558,20 @@ export async function updateCourse(
 
       const priceVal = data.discountedPrice || data.discountPrice || data.price || existing.discountedPrice || existing.price;
       const origPriceVal = data.originalPrice || existing.originalPrice || priceVal;
+
+      // Price validation for updates
+      const numOrig = Number(String(origPriceVal).replace(/[^0-9.-]/g, ''));
+      const numDisc = Number(String(priceVal).replace(/[^0-9.-]/g, ''));
+      if (!isNaN(numOrig) && numOrig < 0) {
+        return { success: false, error: 'Original price cannot be negative.' };
+      }
+      if (!isNaN(numDisc) && numDisc < 0) {
+        return { success: false, error: 'Discounted price cannot be negative.' };
+      }
+      if (!isNaN(numOrig) && !isNaN(numDisc) && numOrig > 0 && numDisc > numOrig) {
+        return { success: false, error: 'Discounted price cannot exceed original price.' };
+      }
+
       const discountVal = data.discount || computeDiscountString(origPriceVal, priceVal);
 
       const examVal = (data.exam || data.examTag || existing.exam || existing.examTag || 'BITSAT').trim();
@@ -542,31 +616,85 @@ export async function updateCourse(
   });
 }
 
-// Delete course by ID with serialized concurrency lock
+export interface CourseDependencies {
+  chaptersCount: number;
+  topicsCount: number;
+  hasActiveDependencies: boolean;
+  details: string[];
+}
+
+// Inspect dependent academic records across chapters and topics
+export function checkCourseDependencies(courseId: number): CourseDependencies {
+  const numId = Number(courseId);
+  const details: string[] = [];
+  let chaptersCount = 0;
+  let topicsCount = 0;
+
+  const baseDirs = process.env.DATA_STORE_DIR
+    ? [process.env.DATA_STORE_DIR]
+    : [
+        path.join(process.cwd(), 'data'),
+        path.join(process.cwd(), 'frontend', 'data'),
+        path.join(process.cwd(), '..', 'data'),
+      ];
+
+  // 1. Check chapters
+  for (const bDir of baseDirs) {
+    const cp = path.join(bDir, 'chapters.json');
+    if (fs.existsSync(cp)) {
+      try {
+        const raw = fs.readFileSync(cp, 'utf-8');
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          chaptersCount = list.filter((ch: any) => Number(ch.courseId) === numId).length;
+          if (chaptersCount > 0) {
+            details.push(`${chaptersCount} curriculum chapter(s)`);
+          }
+          break;
+        }
+      } catch {}
+    }
+  }
+
+  // 2. Check topics
+  for (const bDir of baseDirs) {
+    const tp = path.join(bDir, 'topics.json');
+    if (fs.existsSync(tp)) {
+      try {
+        const raw = fs.readFileSync(tp, 'utf-8');
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          topicsCount = list.filter((top: any) => Number(top.courseId) === numId).length;
+          if (topicsCount > 0) {
+            details.push(`${topicsCount} syllabus topic(s)`);
+          }
+          break;
+        }
+      } catch {}
+    }
+  }
+
+  return {
+    chaptersCount,
+    topicsCount,
+    hasActiveDependencies: chaptersCount > 0 || topicsCount > 0,
+    details,
+  };
+}
+
+// Delete course by ID — Enforces Phase 4.1b Course Master Safety Lock: Permanent deletion is disabled across all courses
 export async function deleteCourse(
   id: number
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; code?: string; dependencies?: CourseDependencies }> {
   return courseMutex.run(async () => {
-    let releaseLock: (() => Promise<void>) | null = null;
-    try {
-      releaseLock = await acquireFileLock('courses');
-
-      const all = readCoursesFromDb();
-      const filtered = all.filter((c) => Number(c.id) !== Number(id));
-
-      if (filtered.length === all.length) {
-        return { success: false, error: `Course with ID ${id} not found.` };
-      }
-
-      writeCoursesToDb(filtered);
-      return { success: true };
-    } catch (err: any) {
-      console.error('[deleteCourse Exception]', err);
-      return { success: false, error: err?.message || 'Failed to delete course.' };
-    } finally {
-      if (releaseLock) {
-        await releaseLock();
-      }
-    }
+    // Phase 4.1b Safety Mandate: Permanent course deletion is strictly disabled across all courses.
+    // Protects student progress, enrollments, invoices, and curriculum integrity.
+    const deps = checkCourseDependencies(id);
+    return {
+      success: false,
+      error: 'Permanent course deletion is disabled to prevent data loss. Please archive or deactivate this course instead.',
+      code: 'DELETION_DISABLED_USE_ARCHIVE',
+      dependencies: deps,
+    };
   });
 }

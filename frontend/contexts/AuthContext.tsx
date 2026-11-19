@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User } from '@/types';
 
 interface RegisterPayload {
@@ -15,98 +15,121 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
-  login: (email: string, password?: string) => Promise<boolean>;
-  register: (payload: RegisterPayload) => Promise<boolean>;
-  loginAsDemo: (role: 'STUDENT' | 'ADMIN') => Promise<boolean>;
-  logout: () => void;
+  isLoading: boolean;
+  login: (email: string, password?: string) => Promise<{ success: boolean; error?: string; user?: User }>;
+  register: (payload: RegisterPayload) => Promise<{ success: boolean; error?: string; user?: User }>;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = '10q_auth_user_fresh_v1';
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
+  const refreshUser = useCallback(async () => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setUser(JSON.parse(stored));
+      const res = await fetch('/api/auth/me', {
+        method: 'GET',
+        cache: 'no-store',
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          setUser(data.user);
+          return;
+        }
       }
-    } catch (e) {
-      console.error(e);
+      setUser(null);
+    } catch {
+      setUser(null);
     } finally {
-      setIsLoaded(true);
+      setIsLoading(false);
     }
   }, []);
 
-  const login = async (email: string, password?: string): Promise<boolean> => {
-    const isSpecialAdmin = email.toLowerCase().includes('admin');
-    const displayName = isSpecialAdmin
-      ? 'Master Admin'
-      : email.split('@')[0] || 'Student';
-    const loggedUser: User = {
-      id: isSpecialAdmin ? 1 : Date.now(),
-      fullName: displayName,
-      email: email,
-      role: isSpecialAdmin ? 'ADMIN' : 'STUDENT',
-      targetExam: 'BITSAT',
-    };
+  useEffect(() => {
+    refreshUser();
+  }, [refreshUser]);
 
-    setUser(loggedUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(loggedUser));
-    localStorage.setItem('10q_user', JSON.stringify(loggedUser));
-    return true;
-  };
+  const login = async (
+    email: string,
+    password?: string
+  ): Promise<{ success: boolean; error?: string; user?: User }> => {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
 
-  const register = async (payload: RegisterPayload): Promise<boolean> => {
-    const newUser: User = {
-      id: Date.now(),
-      fullName: payload.fullName,
-      email: payload.email,
-      mobileNumber: payload.mobileNumber,
-      role: 'STUDENT',
-      targetExam: payload.targetExam || 'BITSAT',
-    };
+      const data = await res.json();
 
-    setUser(newUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
-    localStorage.setItem('10q_user', JSON.stringify(newUser));
-    return true;
-  };
+      if (!res.ok || !data.success) {
+        return {
+          success: false,
+          error: data?.error || 'Invalid credentials.',
+        };
+      }
 
-  const loginAsDemo = async (role: 'STUDENT' | 'ADMIN'): Promise<boolean> => {
-    if (role === 'ADMIN') {
-      const adminUser: User = {
-        id: 1,
-        fullName: 'Harshal Jain (Lead Admin)',
-        email: 'admin@10qchallenge.in',
-        mobileNumber: '+91 98765 43210',
-        role: 'ADMIN',
+      setUser(data.user);
+      return { success: true, user: data.user };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Network error occurred while connecting to authentication service.',
       };
-      setUser(adminUser);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(adminUser));
-    } else {
-      const studentUser: User = {
-        id: 101,
-        fullName: 'Aarav Sharma',
-        email: 'student@10qchallenge.in',
-        mobileNumber: '+91 98765 43210',
-        role: 'STUDENT',
-        targetExam: 'BITSAT',
-      };
-      setUser(studentUser);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(studentUser));
     }
-    return true;
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
-    window.location.href = '/login';
+  const register = async (
+    payload: RegisterPayload
+  ): Promise<{ success: boolean; error?: string; user?: User }> => {
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        return {
+          success: false,
+          error: data?.error || 'Registration failed.',
+        };
+      }
+
+      setUser(data.user);
+      return { success: true, user: data.user };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Network error occurred during registration.',
+      };
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+      });
+    } catch {
+      // Proceed with client cleanup
+    } finally {
+      setUser(null);
+      // Clean legacy localStorage keys if any remain
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('10q_auth_user_fresh_v1');
+        localStorage.removeItem('10q_user');
+        localStorage.removeItem('10q_token');
+        window.location.href = '/login';
+      }
+    }
   };
 
   return (
@@ -115,13 +138,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         isAuthenticated: !!user,
         isAdmin: user?.role === 'ADMIN',
+        isLoading,
         login,
         register,
-        loginAsDemo,
         logout,
+        refreshUser,
       }}
     >
-      {isLoaded ? children : null}
+      {children}
     </AuthContext.Provider>
   );
 }

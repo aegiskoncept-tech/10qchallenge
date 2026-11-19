@@ -1,0 +1,101 @@
+[
+  {
+    "id": 1,
+    "title": "BITSAT 2026 Full Syllabus CBT Mock 01",
+    "examTag": "BITSAT",
+    "targetYear": 2026,
+    "description": "Exact BITSAT pattern test with 130 questions (+12 bonus questions) and instant percentile report.",
+    "durationMinutes": 180,
+    "totalQuestions": 130,
+    "totalMarks": 390,
+    "price": 499,
+    "status": "Published",
+    "questionIds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System",
+    "version": 1
+  },
+  {
+    "id": 2,
+    "title": "BITSAT 2026 Full Syllabus CBT Mock 02",
+    "examTag": "BITSAT",
+    "targetYear": 2026,
+    "description": "Advanced speed test focusing on Physics & Math time-allocation under high stress.",
+    "durationMinutes": 180,
+    "totalQuestions": 5,
+    "totalMarks": 15,
+    "price": 499,
+    "status": "Published",
+    "questionIds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-19T01:57:50.580Z",
+    "createdBy": "System",
+    "version": 1,
+    "markingScheme": {
+      "positiveMarks": 3,
+      "negativeMarks": 1,
+      "sectionOverrides": {}
+    },
+    "versions": [],
+    "updatedBy": "Lead Administrator (admin@10qchallenge.in)"
+  },
+  {
+    "id": 3,
+    "title": "JEE Main 2026 Full Length Predictive Mock 01",
+    "examTag": "JEE Main",
+    "targetYear": 2026,
+    "description": "Curated by top IITians matching the latest NTA question distribution and numerical range.",
+    "durationMinutes": 180,
+    "totalQuestions": 75,
+    "totalMarks": 300,
+    "price": 399,
+    "status": "Published",
+    "questionIds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System",
+    "version": 1
+  },
+  {
+    "id": 4,
+    "title": "COMEDK 2026 High Speed CBT Mock",
+    "examTag": "COMEDK",
+    "targetYear": 2026,
+    "description": "180 questions in 180 minutes simulation for Bengaluru top engineering colleges.",
+    "durationMinutes": 180,
+    "totalQuestions": 180,
+    "totalMarks": 180,
+    "price": 349,
+    "status": "Published",
+    "questionIds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System",
+    "version": 1
+  }
+]

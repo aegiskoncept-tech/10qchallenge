@@ -1,0 +1,14 @@
+{
+  "platformName": "10Q Challenge LMS",
+  "supportEmail": "support@10qchallenge.in",
+  "supportPhone": "+91 98765 43210",
+  "siteUrl": "https://10qchallenge.in",
+  "paymentGatewayMode": "SANDBOX",
+  "maintenanceMode": false,
+  "classroomAccessPolicy": "STRICT_SETTLEMENT",
+  "defaultTestDurationMinutes": 180,
+  "maxLoginAttempts": 5,
+  "sessionTimeoutHours": 72,
+  "updatedAt": "2026-11-01T00:00:00.000Z",
+  "updatedBy": "System"
+}

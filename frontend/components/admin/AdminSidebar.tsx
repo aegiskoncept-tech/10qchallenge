@@ -2,12 +2,14 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   GraduationCap,
   BookOpen,
   ClipboardList,
   BookMarked,
+  Layers,
   HelpCircle,
   Video,
   FileText,
@@ -18,19 +20,24 @@ import {
   MessageSquare,
   FileCheck,
   Receipt,
-  ChevronDown,
+  Clock,
+  X,
+  ChevronLeft,
   ChevronRight,
-  X
+  Shield,
+  Users,
+  CreditCard,
+  Settings,
+  UserCog
 } from 'lucide-react';
 
 export interface NavItem {
   id: string;
   name: string;
+  href: string;
   icon: React.ComponentType<{ className?: string }>;
   badge?: string;
-  badgeColor?: string;
-  hasSub?: boolean;
-  subItems?: { id: string; name: string }[];
+  badgeVariant?: 'success' | 'warning' | 'info' | 'neutral';
 }
 
 export interface NavGroup {
@@ -45,9 +52,16 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
       {
         id: 'Dashboard',
         name: 'Dashboard',
+        href: '/admin/dashboard',
         icon: LayoutDashboard,
         badge: 'Live',
-        badgeColor: 'bg-[#E9F8F1] text-[#16A36A] border-[#B2EAD0]'
+        badgeVariant: 'success'
+      },
+      {
+        id: 'Audit Logs',
+        name: 'Audit Logs',
+        href: '/admin/audit-logs',
+        icon: Shield
       }
     ]
   },
@@ -57,307 +71,243 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
       {
         id: 'Exam Master',
         name: 'Exam Master',
+        href: '/admin/exams',
         icon: GraduationCap
       },
       {
         id: 'Course Master',
         name: 'Course Master',
+        href: '/admin/courses',
         icon: BookOpen
       },
       {
         id: 'Subject Master',
         name: 'Subject Master',
+        href: '/admin/subjects',
         icon: ClipboardList
       },
       {
         id: 'Chapter Management',
         name: 'Chapter Management',
-        icon: BookMarked,
-        hasSub: true,
-        subItems: [
-          { id: 'Chapter Master', name: 'Chapter Master' },
-          { id: 'Chapter Topic Master', name: 'Chapter Topic Master' }
-        ]
+        href: '/admin/chapters',
+        icon: BookMarked
+      },
+      {
+        id: 'Topic Master',
+        name: 'Topic Master',
+        href: '/admin/topics',
+        icon: Layers
       },
       {
         id: 'Question Management',
         name: 'Question Management',
-        icon: HelpCircle,
-        hasSub: true,
-        subItems: [
-          { id: 'Objective Question', name: 'Objective Question' },
-          { id: 'Numerical Question', name: 'Numerical Question' }
-        ]
+        href: '/admin/questions',
+        icon: HelpCircle
       }
     ]
   },
   {
-    title: 'CONTENT MANAGEMENT',
+    title: 'CONTENT & ASSESSMENTS',
     items: [
       {
         id: 'Video Master',
         name: 'Video Master',
+        href: '/admin/videos',
         icon: Video
       },
       {
         id: 'Document Master',
         name: 'Document Master',
+        href: '/admin/documents',
         icon: FileText
+      },
+      {
+        id: 'Test Series',
+        name: 'Test Series',
+        href: '/admin/test-series',
+        icon: FileCheck
       }
     ]
   },
   {
-    title: 'BUSINESS MANAGEMENT',
+    title: 'GROWTH & STUDENTS',
     items: [
+      {
+        id: 'Student Directory',
+        name: 'Student Directory',
+        href: '/admin/students',
+        icon: Users
+      },
       {
         id: 'Coupon',
         name: 'Coupon',
+        href: '/admin/coupons',
         icon: Ticket
       },
       {
         id: 'Notification',
         name: 'Notification',
+        href: '/admin/notifications',
         icon: Bell
       },
       {
         id: 'Blog Master',
         name: 'Blog Master',
+        href: '/admin/blogs',
         icon: Edit3
       },
       {
         id: 'SEO Page',
         name: 'SEO Page',
+        href: '/admin/seo',
         icon: Globe
-      }
-    ]
-  },
-  {
-    title: 'MISCELLANEOUS',
-    items: [
+      },
       {
         id: 'Student Doubt',
         name: 'Student Doubt',
+        href: '/admin/doubts',
         icon: MessageSquare
       },
       {
         id: 'Student Attempted Test',
         name: 'Student Attempted Test',
-        icon: FileCheck
+        href: '/admin/attempted-tests',
+        icon: Clock
+      },
+      {
+        id: 'Orders & Payments',
+        name: 'Orders & Payments',
+        href: '/admin/orders',
+        icon: CreditCard
       },
       {
         id: 'Student Invoices',
         name: 'Student Invoices',
+        href: '/admin/invoices',
         icon: Receipt
+      }
+    ]
+  },
+  {
+    title: 'SYSTEM & SETTINGS',
+    items: [
+      {
+        id: 'Admin Roles',
+        name: 'Admin Roles',
+        href: '/admin/roles',
+        icon: UserCog
+      },
+      {
+        id: 'Platform Settings',
+        name: 'Platform Settings',
+        href: '/admin/settings',
+        icon: Settings
       }
     ]
   }
 ];
 
 export interface AdminSidebarProps {
-  activeTab: string;
-  onSelectTab: (tabName: string) => void;
   isCollapsed: boolean;
+  onToggleCollapse: () => void;
   isMobileOpen: boolean;
   onCloseMobile: () => void;
   counts?: Record<string, number>;
 }
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({
-  activeTab,
-  onSelectTab,
   isCollapsed,
+  onToggleCollapse,
   isMobileOpen,
   onCloseMobile,
   counts = {}
 }) => {
-  const [expandedMenus, setExpandedMenus] = React.useState<Record<string, boolean>>({
-    'Chapter Management': true,
-    'Question Management': true
-  });
+  const pathname = usePathname();
 
-  const toggleSubmenu = (menuName: string) => {
-    setExpandedMenus((prev) => ({
-      ...prev,
-      [menuName]: !prev[menuName]
-    }));
-  };
-
-  const isItemActive = (item: NavItem): boolean => {
-    if (activeTab === item.name || activeTab === item.id) return true;
-    if (item.subItems) {
-      return item.subItems.some((s) => s.name === activeTab || s.id === activeTab);
+  const isItemActive = (href: string) => {
+    if (href === '/admin/dashboard') {
+      return pathname === '/admin/dashboard' || pathname === '/admin';
     }
-    return false;
+    return pathname.startsWith(href);
   };
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-[#FFFFFF] border-r border-[#E3E8F0] select-none">
-      {/* BRAND HEADER */}
-      <div className="h-16 px-4 flex items-center justify-between border-b border-[#E3E8F0] shrink-0 bg-white">
-        <Link href="/admin" className="flex items-center gap-2.5 overflow-hidden">
-          <div className="w-9 h-9 rounded-xl bg-[#14233F] text-[#F6F8FC] flex items-center justify-center font-black text-sm tracking-tighter shrink-0 shadow-xs border border-[#14233F]">
+    <div className="flex flex-col h-full bg-slate-900 text-slate-200 select-none">
+      {/* Brand Header */}
+      <div className="h-16 flex items-center justify-between px-4 border-b border-slate-800 shrink-0">
+        <Link href="/admin/dashboard" className="flex items-center gap-2.5 overflow-hidden">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 flex items-center justify-center font-black text-sm shrink-0 shadow-sm">
             10Q
           </div>
           {!isCollapsed && (
-            <div className="overflow-hidden leading-tight">
-              <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-[#172B4D] text-sm tracking-tight truncate">
-                  10Q Challenge
-                </span>
-                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold tracking-wider bg-[#1455C0] text-white">
-                  LMS
-                </span>
-              </div>
-              <p className="text-[10px] text-[#6B7890] font-medium truncate">
-                Admin Control Hub
-              </p>
+            <div className="flex flex-col min-w-0">
+              <span className="text-xs font-black tracking-wider text-white uppercase truncate">
+                10Q Challenge
+              </span>
+              <span className="text-[10px] font-semibold text-amber-400 tracking-wider uppercase">
+                LMS Admin Panel
+              </span>
             </div>
           )}
         </Link>
-        {isMobileOpen && (
-          <button
-            type="button"
-            onClick={onCloseMobile}
-            className="p-1.5 text-[#6B7890] hover:text-[#172B4D] hover:bg-[#F6F8FC] rounded-lg cursor-pointer md:hidden"
-            title="Close navigation"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
+
+        {/* Mobile close button */}
+        <button
+          onClick={onCloseMobile}
+          className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+          aria-label="Close navigation"
+        >
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
-      {/* NAVIGATION ITEMS LIST */}
-      <div className="flex-1 overflow-y-auto py-3 px-3 space-y-4">
+      {/* Nav List */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6 scrollbar-thin scrollbar-thumb-slate-700">
         {ADMIN_NAV_GROUPS.map((group) => (
           <div key={group.title} className="space-y-1">
-            {!isCollapsed ? (
-              <div className="px-2 pb-1 text-[10px] font-bold tracking-wider text-[#9AA5B8] uppercase">
+            {!isCollapsed && (
+              <h4 className="px-3 text-[10px] font-black uppercase tracking-wider text-slate-400">
                 {group.title}
-              </div>
-            ) : (
-              <div className="py-1 text-center text-[10px] text-[#9AA5B8] font-bold">•</div>
+              </h4>
             )}
 
             <div className="space-y-0.5">
               {group.items.map((item) => {
                 const Icon = item.icon;
-                const active = isItemActive(item);
-                const isExpanded = Boolean(expandedMenus[item.name]);
-                const count = counts[item.name];
+                const active = isItemActive(item.href);
 
-                if (item.hasSub) {
-                  return (
-                    <div key={item.id} className="space-y-0.5">
-                      <button
-                        type="button"
-                        onClick={() => toggleSubmenu(item.name)}
-                        title={isCollapsed ? item.name : undefined}
-                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer group ${
-                          active
-                            ? 'bg-[#14233F] text-white shadow-2xs'
-                            : 'text-[#172B4D] hover:bg-[#F6F8FC] hover:text-[#1455C0]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <Icon
-                            className={`w-4 h-4 shrink-0 transition-colors ${
-                              active ? 'text-white' : 'text-[#6B7890] group-hover:text-[#1455C0]'
-                            }`}
-                          />
-                          {!isCollapsed && (
-                            <span className="truncate">{item.name}</span>
-                          )}
-                        </div>
-
-                        {!isCollapsed && (
-                          <span className={`text-[#6B7890] ${active ? 'text-white' : ''}`}>
-                            {isExpanded ? (
-                              <ChevronDown className="w-3.5 h-3.5" />
-                            ) : (
-                              <ChevronRight className="w-3.5 h-3.5" />
-                            )}
-                          </span>
-                        )}
-                      </button>
-
-                      {/* SUBITEMS */}
-                      {isExpanded && !isCollapsed && item.subItems && (
-                        <div className="pl-6 pr-1 py-0.5 space-y-0.5 border-l-2 border-[#EDF1F7] ml-4 mt-0.5">
-                          {item.subItems.map((sub) => {
-                            const subActive = activeTab === sub.name || activeTab === sub.id;
-                            return (
-                              <button
-                                key={sub.id}
-                                type="button"
-                                onClick={() => {
-                                  onSelectTab(sub.name);
-                                  onCloseMobile();
-                                }}
-                                className={`w-full text-left px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer flex items-center justify-between ${
-                                  subActive
-                                    ? 'bg-[#1455C0] text-white font-semibold shadow-2xs'
-                                    : 'text-[#6B7890] hover:text-[#172B4D] hover:bg-[#F6F8FC]'
-                                }`}
-                              >
-                                <span className="truncate">{sub.name}</span>
-                                {subActive && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-
-                // Regular Single Nav Item
                 return (
-                  <button
+                  <Link
                     key={item.id}
-                    type="button"
+                    href={item.href}
                     onClick={() => {
-                      onSelectTab(item.name);
-                      onCloseMobile();
+                      if (isMobileOpen) onCloseMobile();
                     }}
                     title={isCollapsed ? item.name : undefined}
-                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer group ${
-                      active
-                        ? 'bg-[#14233F] text-white shadow-2xs'
-                        : 'text-[#172B4D] hover:bg-[#F6F8FC] hover:text-[#1455C0]'
-                    }`}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group ${active
+                      ? 'bg-amber-400 text-slate-950 font-bold shadow-sm'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                      }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <Icon
-                        className={`w-4 h-4 shrink-0 transition-colors ${
-                          active ? 'text-white' : 'text-[#6B7890] group-hover:text-[#1455C0]'
+                    <Icon
+                      className={`w-4 h-4 shrink-0 transition-transform ${active ? 'text-slate-950' : 'text-slate-400 group-hover:text-amber-400'
                         }`}
-                      />
-                      {!isCollapsed && <span className="truncate">{item.name}</span>}
-                    </div>
-
+                    />
                     {!isCollapsed && (
-                      <div className="flex items-center gap-1.5">
-                        {count !== undefined && count > 0 && (
-                          <span
-                            className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-semibold ${
-                              active ? 'bg-white/20 text-white' : 'bg-[#F6F8FC] text-[#6B7890] border border-[#E3E8F0]'
-                            }`}
-                          >
-                            {count}
-                          </span>
-                        )}
-                        {item.badge && (
-                          <span
-                            className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase border ${item.badgeColor || ''}`}
-                          >
-                            {item.badge}
-                          </span>
-                        )}
-                      </div>
+                      <span className="truncate flex-1">{item.name}</span>
                     )}
-                  </button>
+
+                    {!isCollapsed && item.badge && (
+                      <span
+                        className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase tracking-wider ${active
+                          ? 'bg-slate-900 text-amber-400'
+                          : 'bg-emerald-500/20 text-emerald-300'
+                          }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </Link>
                 );
               })}
             </div>
@@ -365,51 +315,60 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         ))}
       </div>
 
-      {/* FOOTER USER SUMMARY */}
-      <div className="p-3 border-t border-[#E3E8F0] bg-[#FAFCFF] shrink-0">
-        <div className="flex items-center gap-2.5 overflow-hidden">
-          <div className="w-8 h-8 rounded-lg bg-[#1455C0] text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs">
-            HJ
+      {/* Footer System Pill & Collapse Toggle */}
+      <div className="p-3 border-t border-slate-800 shrink-0 flex items-center justify-between">
+        {!isCollapsed ? (
+          <div className="flex items-center gap-2 px-2 py-1 text-[11px] text-slate-400 font-medium">
+            <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="truncate">Production v2.0</span>
           </div>
-          {!isCollapsed && (
-            <div className="overflow-hidden leading-tight flex-1">
-              <p className="text-xs font-bold text-[#172B4D] truncate">Harshal Jain</p>
-              <p className="text-[10px] text-[#16A36A] font-semibold truncate flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#16A36A]" />
-                Online Administrator
-              </p>
-            </div>
-          )}
-        </div>
+        ) : (
+          <div className="w-full flex justify-center py-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" title="Production v2.0" />
+          </div>
+        )}
+
+        <button
+          onClick={onToggleCollapse}
+          className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer transition-colors"
+          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        </button>
       </div>
     </div>
   );
 
   return (
     <>
-      {/* DESKTOP SIDEBAR */}
+      {/* Desktop Sidebar */}
       <aside
-        className={`hidden md:block shrink-0 transition-all duration-200 ease-in-out h-screen sticky top-0 z-30 ${
-          isCollapsed ? 'w-16' : 'w-64'
-        }`}
+        className={`hidden lg:block shrink-0 transition-all duration-200 z-30 ${isCollapsed ? 'w-20' : 'w-64'
+          }`}
       >
-        {sidebarContent}
+        <div className={`fixed top-0 bottom-0 left-0 transition-all duration-200 ${isCollapsed ? 'w-20' : 'w-64'
+          }`}>
+          {sidebarContent}
+        </div>
       </aside>
 
-      {/* MOBILE DRAWER */}
+      {/* Mobile Drawer Backdrop */}
       {isMobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden flex">
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-[#14233F]/50 backdrop-blur-xs transition-opacity animate-in fade-in"
-            onClick={onCloseMobile}
-          />
-          {/* Slide-over Container */}
-          <div className="relative w-72 max-w-[85vw] h-full shadow-2xl z-10 animate-in slide-in-from-left duration-200">
-            {sidebarContent}
-          </div>
-        </div>
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-xs transition-opacity"
+          onClick={onCloseMobile}
+          aria-hidden="true"
+        />
       )}
+
+      {/* Mobile Sidebar Drawer */}
+      <div
+        className={`lg:hidden fixed inset-y-0 left-0 z-50 w-72 transform transition-transform duration-200 ease-in-out ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+      >
+        {sidebarContent}
+      </div>
     </>
   );
 };

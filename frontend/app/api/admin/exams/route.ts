@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminExams, createExam } from '@/lib/db/exams';
+import { requireAdmin } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAdmin(req, 'EXAMS', 'LIST_EXAMS');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || searchParams.get('q') || undefined;
@@ -26,11 +32,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAdmin(req, 'EXAMS', 'CREATE_EXAM');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const body = await req.json();
-
-    // Identify user from header or payload for audit trail
-    const adminUser = req.headers.get('x-admin-user') || body.adminUser || 'Administrator';
+    const adminUser = `${auth.user.fullName} (${auth.user.email})`;
 
     const result = await createExam(body, adminUser);
 

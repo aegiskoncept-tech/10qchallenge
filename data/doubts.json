@@ -1,0 +1,33 @@
+[
+  {
+    "id": 1,
+    "studentId": 101,
+    "studentName": "Aarav Sharma",
+    "studentEmail": "aarav.sharma@gmail.com",
+    "courseId": 1,
+    "courseTitle": "BITSAT 2026 Crash Course",
+    "lessonTitle": "Mechanics & 1D Kinematics - Complete Masterclass",
+    "subject": "Physics",
+    "queryText": "In the relative velocity derivation at 42:15, why is the cross-product sign negative when projecting onto the vertical axis?",
+    "timestampMinutes": "42:15",
+    "status": "RESOLVED",
+    "facultyName": "Dr. Vikramaditya (BITS Pilani)",
+    "solutionText": "The negative sign emerges from the standard right-hand rule coordinate system convention where the vertical axis is defined upwards (+j) while the relative acceleration acts downwards (-g). Hence, a_rel = -g j.",
+    "createdAt": "2026-11-02T10:30:00.000Z",
+    "solvedAt": "2026-11-02T12:00:00.000Z"
+  },
+  {
+    "id": 2,
+    "studentId": 102,
+    "studentName": "Rohan Deshmukh",
+    "studentEmail": "rohan.d@yahoo.com",
+    "courseId": 1,
+    "courseTitle": "BITSAT 2026 Crash Course",
+    "lessonTitle": "Chemical Bonding & Hybridization Speed Techniques",
+    "subject": "Chemistry",
+    "queryText": "Can we apply the steric number formula directly for xenon fluorides like XeF4 and XeOF4?",
+    "timestampMinutes": "18:40",
+    "status": "PENDING",
+    "createdAt": "2026-11-03T14:15:00.000Z"
+  }
+]

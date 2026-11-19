@@ -59,49 +59,72 @@ export default function CheckoutPage() {
     );
   }
 
+  const STATE_CODE_MAP: Record<string, string> = {
+    'Karnataka': 'KA',
+    'Maharashtra': 'MH',
+    'Rajasthan': 'RJ',
+    'Delhi': 'DL',
+    'Delhi / NCR': 'DL',
+    'Uttar Pradesh': 'UP',
+    'Telangana': 'TG',
+    'Tamil Nadu': 'TN',
+    'Other': 'DL',
+  };
+
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setIsProcessing(true);
 
+    if (!user) {
+      router.push(`/login?redirect=${encodeURIComponent('/checkout')}`);
+      return;
+    }
+
     try {
-      // 1. Generate unique Txn ID
-      const txnId = `10Q_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      const stateCode = STATE_CODE_MAP[formData.state] || 'KA';
 
-      // 2. Prepare Order Payload
-      const orderPayload = {
-        studentId: user?.id || 1,
-        studentName: formData.fullName,
-        studentEmail: formData.email,
-        studentPhone: formData.phone,
-        items: items.map((i) => ({
-          courseId: i.courseId,
-          courseTitle: i.courseTitle,
-          price: i.price,
-        })),
-        subtotalAmount: subtotal,
-        discountAmount: discount,
-        totalAmount: total,
-        couponCode: appliedCoupon?.code,
-        paymentGateway: 'PayU',
-        gatewayTxnId: txnId,
-      };
+      // 1. Server-Side Order & Payment Attempt Creation
+      const res = await fetch('/api/checkout/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: items[0].courseId,
+          billingFullName: formData.fullName,
+          billingEmail: formData.email,
+          billingPhone: formData.phone,
+          billingStateCode: stateCode,
+        }),
+      });
 
-      // 3. Create order via API layer (persists locally / to backend)
-      const order = await api.createOrder(orderPayload);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Failed to create order.');
+      }
 
-      // 4. Simulate instantaneous bank/PayU confirmation
-      setTimeout(() => {
-        clearCart();
-        router.push(
-          `/payment-success?txnId=${txnId}&orderId=${order.orderNumber}&amount=${total}&name=${encodeURIComponent(
-            formData.fullName
-          )}`
-        );
-      }, 1500);
+      const { payuParams, payuPaymentUrl } = json.data;
+
+      // 2. Submit Form Directly to PayU Sandbox
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = payuPaymentUrl;
+
+      Object.entries(payuParams).forEach(([k, v]) => {
+        if (v !== undefined && v !== null) {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = k;
+          input.value = String(v);
+          form.appendChild(input);
+        }
+      });
+
+      document.body.appendChild(form);
+      clearCart();
+      form.submit();
     } catch (err: any) {
       console.error('Payment processing failed:', err);
-      setErrorMessage('Payment transaction could not be initialized. Please try again.');
+      setErrorMessage(err.message || 'Payment transaction could not be initialized. Please try again.');
       setIsProcessing(false);
     }
   };

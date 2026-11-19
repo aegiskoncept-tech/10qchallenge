@@ -64,6 +64,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ items, className = '' 
 export interface PageHeaderProps {
   title: string;
   description?: string;
+  subtitle?: string;
   breadcrumbs?: BreadcrumbItem[];
   actions?: React.ReactNode;
   badge?: React.ReactNode;
@@ -73,11 +74,13 @@ export interface PageHeaderProps {
 export const PageHeader: React.FC<PageHeaderProps> = ({
   title,
   description,
+  subtitle,
   breadcrumbs,
   actions,
   badge,
   className = ''
 }) => {
+  const displayDescription = description || subtitle;
   return (
     <div className={`space-y-1.5 mb-6 ${className}`}>
       {breadcrumbs && breadcrumbs.length > 0 && (
@@ -91,9 +94,9 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
             </h1>
             {badge}
           </div>
-          {description && (
+          {displayDescription && (
             <p className="text-xs sm:text-sm text-[#6B7890] mt-0.5 max-w-3xl">
-              {description}
+              {displayDescription}
             </p>
           )}
         </div>

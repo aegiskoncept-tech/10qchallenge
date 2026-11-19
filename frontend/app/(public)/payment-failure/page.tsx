@@ -1,11 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { AlertCircle, RefreshCw, MessageSquare, ArrowLeft } from 'lucide-react';
+import { AlertCircle, RefreshCw, MessageSquare } from 'lucide-react';
 
-export default function PaymentFailurePage() {
+function FailureContent() {
   const searchParams = useSearchParams();
   const errorMsg =
     searchParams.get('error') || 'Transaction was declined by your bank or timed out.';
@@ -43,5 +43,13 @@ export default function PaymentFailurePage() {
         </a>
       </div>
     </div>
+  );
+}
+
+export default function PaymentFailurePage() {
+  return (
+    <Suspense fallback={<div className="max-w-xl mx-auto px-4 py-16 text-center text-sm text-[#6E6990]">Loading status...</div>}>
+      <FailureContent />
+    </Suspense>
   );
 }

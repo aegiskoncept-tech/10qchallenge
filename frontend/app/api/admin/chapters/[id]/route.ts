@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getChapterById, updateChapter, deleteChapter } from '@/lib/db/chapters';
+import { requireAdmin } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,6 +8,11 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(req, 'CHAPTERS', 'GET_CHAPTER');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { id } = await params;
     const chapterId = Number(id);
@@ -32,6 +38,11 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(req, 'CHAPTERS', 'UPDATE_CHAPTER');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { id } = await params;
     const chapterId = Number(id);
@@ -41,7 +52,7 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const adminUser = req.headers.get('x-admin-user') || body.adminUser || 'Administrator';
+    const adminUser = `${auth.user.fullName} (${auth.user.email})`;
 
     const result = await updateChapter(chapterId, body, adminUser);
 
@@ -64,6 +75,11 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(req, 'CHAPTERS', 'DELETE_CHAPTER');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { id } = await params;
     const chapterId = Number(id);

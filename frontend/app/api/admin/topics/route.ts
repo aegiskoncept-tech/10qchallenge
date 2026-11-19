@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminTopics, createTopic } from '@/lib/db/topics';
+import { requireAdmin } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAdmin(req, 'TOPICS', 'LIST_TOPICS');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const courseIdParam = searchParams.get('courseId');
@@ -41,9 +47,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAdmin(req, 'TOPICS', 'CREATE_TOPIC');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const body = await req.json();
-    const adminUser = req.headers.get('x-admin-user') || body.adminUser || 'Administrator';
+    const adminUser = `${auth.user.fullName} (${auth.user.email})`;
 
     const result = await createTopic(body, adminUser);
 

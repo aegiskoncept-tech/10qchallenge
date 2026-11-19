@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSubjectsForCourse, assignSubjectsToCourse } from '@/lib/db/subjects';
+import { requireAdmin } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,6 +8,11 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(req, 'COURSES', 'GET_COURSE_SUBJECTS');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { id } = await params;
     const courseId = Number(id);
@@ -32,6 +38,11 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(req, 'COURSES', 'UPDATE_COURSE_SUBJECTS');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { id } = await params;
     const courseId = Number(id);

@@ -634,15 +634,101 @@ export async function updateQuestion(
   });
 }
 
-// Dependency check helper to determine whether Test Series depend on a question
+// Dependency check helper to determine whether Test Series or student attempts depend on a question
 export function getQuestionDependencies(questionId: number): {
   count: number;
   details: string[];
+  papers: Array<{ id: number; title: string; version: number }>;
+  attemptsCount: number;
 } {
   const details: string[] = [];
-  let count = 0;
-  // Future Test Series will reference questionId
-  return { count, details };
+  const papers: Array<{ id: number; title: string; version: number }> = [];
+  const qId = Number(questionId);
+
+  // 1. Check all Test Series papers and version archives
+  try {
+    const cwd = process.cwd();
+    const candidatePaths = [
+      path.join(cwd, 'data', 'test-series.json'),
+      path.join(cwd, 'frontend', 'data', 'test-series.json'),
+      path.join(cwd, '..', 'data', 'test-series.json'),
+    ];
+    let tests: any[] = [];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        try {
+          const raw = fs.readFileSync(p, 'utf-8');
+          if (raw.trim()) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              tests = parsed;
+              break;
+            }
+          }
+        } catch {}
+      }
+    }
+
+    for (const test of tests) {
+      const inCurrent = Array.isArray(test.questionIds) && test.questionIds.map(Number).includes(qId);
+      const inVersions = Array.isArray(test.versions) && test.versions.some(
+        (v: any) => Array.isArray(v.questionIds) && v.questionIds.map(Number).includes(qId)
+      );
+
+      if (inCurrent || inVersions) {
+        const detailStr = `Test #${test.id} ("${test.title}" v${test.version || 1})`;
+        if (!details.includes(detailStr)) {
+          details.push(detailStr);
+          papers.push({ id: test.id, title: test.title, version: test.version || 1 });
+        }
+      }
+    }
+  } catch (err) {}
+
+  // 2. Check student test attempts
+  let attemptsCount = 0;
+  try {
+    const cwd = process.cwd();
+    const attemptPaths = [
+      path.join(cwd, 'data', 'test-attempts.json'),
+      path.join(cwd, 'frontend', 'data', 'test-attempts.json'),
+      path.join(cwd, '..', 'data', 'test-attempts.json'),
+    ];
+    let attempts: any[] = [];
+    for (const p of attemptPaths) {
+      if (fs.existsSync(p)) {
+        try {
+          const raw = fs.readFileSync(p, 'utf-8');
+          if (raw.trim()) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              attempts = parsed;
+              break;
+            }
+          }
+        } catch {}
+      }
+    }
+
+    for (const att of attempts) {
+      let isReferenced = false;
+      if (att.questionSnapshots && att.questionSnapshots[String(qId)]) {
+        isReferenced = true;
+      } else if (att.responses && att.responses[String(qId)]) {
+        isReferenced = true;
+      }
+      if (isReferenced) {
+        attemptsCount++;
+      }
+    }
+
+    if (attemptsCount > 0) {
+      details.push(`${attemptsCount} student attempt(s)`);
+    }
+  } catch (err) {}
+
+  const count = papers.length + attemptsCount;
+  return { count, details, papers, attemptsCount };
 }
 
 // Delete question with dependency protection

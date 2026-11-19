@@ -1,0 +1,67 @@
+[
+  {
+    "id": 1,
+    "subjectCode": "101",
+    "subjectName": "Physics",
+    "slug": "physics",
+    "description": "Comprehensive physics curriculum covering Mechanics, Electrodynamics, Optics, and Modern Physics.",
+    "isActive": true,
+    "displayIndex": 1,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System",
+    "updatedBy": "System"
+  },
+  {
+    "id": 2,
+    "subjectCode": "201",
+    "subjectName": "Chemistry",
+    "slug": "chemistry",
+    "description": "Organic, Inorganic, and Physical Chemistry modules with formula sheets.",
+    "isActive": true,
+    "displayIndex": 2,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System",
+    "updatedBy": "System"
+  },
+  {
+    "id": 3,
+    "subjectCode": "301",
+    "subjectName": "Mathematics",
+    "slug": "mathematics",
+    "description": "Calculus, Algebra, Coordinate Geometry, Trigonometry, and Vectors.",
+    "isActive": true,
+    "displayIndex": 3,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System",
+    "updatedBy": "System"
+  },
+  {
+    "id": 4,
+    "subjectCode": "204",
+    "subjectName": "LR & English",
+    "slug": "lr-english",
+    "description": "Logical Reasoning and English Proficiency for BITSAT & engineering entrance exams.",
+    "isActive": true,
+    "displayIndex": 4,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System",
+    "updatedBy": "System"
+  },
+  {
+    "id": 5,
+    "subjectCode": "302",
+    "subjectName": "Aptitude",
+    "slug": "aptitude",
+    "description": "Quantitative aptitude, analytical problem solving, and data interpretation.",
+    "isActive": true,
+    "displayIndex": 5,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System",
+    "updatedBy": "System"
+  }
+]

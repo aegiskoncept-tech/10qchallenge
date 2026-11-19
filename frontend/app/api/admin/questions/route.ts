@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminQuestions, createQuestion, QuestionType, DifficultyLevel } from '@/lib/db/questions';
+import { requireAdmin } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAdmin(req, 'QUESTIONS', 'LIST_QUESTIONS');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const typeParam = searchParams.get('type') as QuestionType | null;
@@ -42,9 +48,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAdmin(req, 'QUESTIONS', 'CREATE_QUESTION');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const body = await req.json();
-    const adminUser = req.headers.get('x-admin-user') || body.adminUser || 'Administrator';
+    const adminUser = `${auth.user.fullName} (${auth.user.email})`;
 
     const result = await createQuestion(body, adminUser);
 

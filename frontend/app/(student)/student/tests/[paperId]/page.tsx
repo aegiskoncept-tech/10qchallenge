@@ -2,499 +2,337 @@
 
 import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Clock,
   ChevronLeft,
-  ChevronRight,
   CheckCircle2,
   AlertCircle,
-  Trophy,
-  RotateCcw,
+  FileQuestion,
+  Award,
+  Sparkles,
   BookOpen,
-  Send,
-  HelpCircle,
+  Info,
+  ShieldAlert,
+  Play,
+  RotateCcw,
 } from 'lucide-react';
-import { MOCK_TEST_PAPERS, MOCK_QUESTIONS } from '@/lib/data';
-import { MathRenderer } from '@/components/ui/MathRenderer';
-import { Question, TestPaper } from '@/types';
+import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
 
-interface TestRunnerPageProps {
+interface TestPaperDetail {
+  id: number;
+  title: string;
+  examTag: string;
+  targetYear: number;
+  description: string;
+  durationMinutes: number;
+  totalQuestions: number;
+  totalMarks: number;
+  price: number;
+  status: string;
+  createdAt: string;
+}
+
+interface TestPaperDetailPageProps {
   params: Promise<{ paperId: string }>;
 }
 
-export default function TestRunnerPage({ params }: TestRunnerPageProps) {
+export default function TestPaperDetailPage({ params }: TestPaperDetailPageProps) {
+  const router = useRouter();
   const resolvedParams = use(params);
-  const paperId = parseInt(resolvedParams.paperId, 10);
+  const paperIdRaw = resolvedParams.paperId;
+  const paperId = parseInt(paperIdRaw, 10);
 
-  const testPaper =
-    MOCK_TEST_PAPERS.find((t) => t.id === paperId) || MOCK_TEST_PAPERS[0];
-  const questions = testPaper.questions || MOCK_QUESTIONS;
+  const [testPaper, setTestPaper] = useState<TestPaperDetail | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
-  const [markedForReview, setMarkedForReview] = useState<number[]>([]);
-  const [visitedQuestions, setVisitedQuestions] = useState<number[]>([questions[0]?.id || 1]);
-  const [timeLeftSeconds, setTimeLeftSeconds] = useState(
-    testPaper.durationMinutes * 60
-  );
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [scoreResult, setScoreResult] = useState<any>(null);
+  // Readiness confirmation state
+  const [isReadyConfirmed, setIsReadyConfirmed] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
-  // Timer effect
   useEffect(() => {
-    if (isSubmitted) return;
-    const timer = setInterval(() => {
-      setTimeLeftSeconds((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          handleSubmitTest();
-          return 0;
+    if (isNaN(paperId) || paperId <= 0) {
+      setError('Invalid test paper identifier.');
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchPaperDetail = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/student/tests/${paperId}`);
+        if (!res.ok) {
+          if (res.status === 404) {
+            throw new Error(`Test paper #${paperId} was not found or is currently not published.`);
+          }
+          if (res.status === 401) {
+            throw new Error('Please log in as a student to access this test paper.');
+          }
+          throw new Error(`Failed to load test paper (HTTP ${res.status}).`);
         }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isSubmitted]);
-
-  const currentQuestion = questions[currentIndex] || questions[0];
-
-  const handleSelectOption = (option: string) => {
-    setUserAnswers((prev) => ({
-      ...prev,
-      [currentQuestion.id]: option,
-    }));
-  };
-
-  const handleClearAnswer = () => {
-    setUserAnswers((prev) => {
-      const copy = { ...prev };
-      delete copy[currentQuestion.id];
-      return copy;
-    });
-  };
-
-  const handleToggleReview = () => {
-    setMarkedForReview((prev) =>
-      prev.includes(currentQuestion.id)
-        ? prev.filter((id) => id !== currentQuestion.id)
-        : [...prev, currentQuestion.id]
-    );
-  };
-
-  const handleNext = () => {
-    if (currentIndex < questions.length - 1) {
-      const nextIdx = currentIndex + 1;
-      setCurrentIndex(nextIdx);
-      const nextQ = questions[nextIdx];
-      if (nextQ && !visitedQuestions.includes(nextQ.id)) {
-        setVisitedQuestions((prev) => [...prev, nextQ.id]);
-      }
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-    }
-  };
-
-  const handleJumpToQuestion = (idx: number) => {
-    setCurrentIndex(idx);
-    const targetQ = questions[idx];
-    if (targetQ && !visitedQuestions.includes(targetQ.id)) {
-      setVisitedQuestions((prev) => [...prev, targetQ.id]);
-    }
-  };
-
-  const handleSubmitTest = () => {
-    let score = 0;
-    let correct = 0;
-    let incorrect = 0;
-    let attempted = 0;
-
-    questions.forEach((q) => {
-      const ans = userAnswers[q.id];
-      if (ans !== undefined && ans !== '') {
-        attempted++;
-        if (ans.toString().trim() === q.correctOption?.toString().trim()) {
-          score += q.marksPositive;
-          correct++;
+        const data = await res.json();
+        if (data.success && data.data) {
+          setTestPaper(data.data);
         } else {
-          score -= q.marksNegative;
-          incorrect++;
+          throw new Error(data.error || 'Failed to retrieve test details.');
         }
+      } catch (err: any) {
+        setError(err?.message || 'Unable to retrieve test paper.');
+      } finally {
+        setIsLoading(false);
       }
-    });
+    };
 
-    const accuracy =
-      attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
+    fetchPaperDetail();
+  }, [paperId]);
 
-    setScoreResult({
-      totalScore: score,
-      maxScore: testPaper.totalMarks,
-      correctCount: correct,
-      incorrectCount: incorrect,
-      unattemptedCount: questions.length - attempted,
-      accuracy,
-      timeTaken: testPaper.durationMinutes * 60 - timeLeftSeconds,
-    });
-    setIsSubmitted(true);
+  const handleStartAttempt = async () => {
+    if (!isReadyConfirmed || isStarting) return;
+    setIsStarting(true);
+    setStartError(null);
+
+    try {
+      const csrfMatch = typeof document !== 'undefined' ? document.cookie.match(/(?:^|; )10q_csrf_token=([^;]*)/) : null;
+      const csrfToken = csrfMatch ? decodeURIComponent(csrfMatch[1]) : '';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (csrfToken) {
+        headers['x-csrf-token'] = csrfToken;
+      }
+
+      const res = await fetch(`/api/student/tests/${paperId}/start`, {
+        method: 'POST',
+        headers,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Server rejected attempt creation (HTTP ${res.status}).`);
+      }
+
+      // Navigate to the verified session container
+      if (data.destination) {
+        router.push(data.destination);
+      } else {
+        throw new Error('Server did not return a valid session destination.');
+      }
+    } catch (err: any) {
+      setStartError(err?.message || 'Failed to start test attempt. Please try again.');
+      setIsStarting(false);
+    }
   };
 
-  const formatTimer = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
-
-  const getQuestionStatusClass = (q: Question) => {
-    const isAnswered = userAnswers[q.id] !== undefined && userAnswers[q.id] !== '';
-    const isReview = markedForReview.includes(q.id);
-    const isVisited = visitedQuestions.includes(q.id);
-
-    if (isReview && isAnswered) return 'bg-[#5B4DB3] text-white ring-2 ring-[#20D66B]';
-    if (isReview) return 'bg-[#5B4DB3] text-white';
-    if (isAnswered) return 'bg-[#20D66B] text-[#17152A] font-extrabold';
-    if (isVisited) return 'bg-[#FF3F68] text-white';
-    return 'bg-white border border-[#E7E3F5] text-[#6E6990]';
-  };
-
-  if (isSubmitted && scoreResult) {
+  if (isLoading) {
     return (
-      <div className="max-w-4xl mx-auto py-10 space-y-8 animate-fadeIn">
-        {/* Scorecard Hero */}
-        <div className="bg-gradient-to-r from-[#17152A] via-[#3F328A] to-[#2D246B] text-white rounded-3xl p-8 sm:p-10 text-center space-y-4 shadow-xl">
-          <div className="w-16 h-16 rounded-full bg-[#FFD800] text-[#17152A] flex items-center justify-center mx-auto shadow-lg">
-            <Trophy size={36} />
-          </div>
+      <div className="bg-white rounded-3xl border border-[#E7E3F5] p-16 text-center max-w-lg mx-auto shadow-xs space-y-4 my-8">
+        <LoadingSpinner size="lg" className="mx-auto" />
+        <h3 className="font-extrabold text-base text-[#17152A]">Loading Test Paper #{paperIdRaw}...</h3>
+        <p className="text-xs text-[#6E6990]">Retrieving authoritative CBT test configuration from LMS server.</p>
+      </div>
+    );
+  }
 
-          <h1 className="text-3xl font-extrabold">CBT Performance Scorecard</h1>
-          <p className="text-xs sm:text-sm text-white/80">{testPaper.title}</p>
-
-          <div className="pt-4 flex items-center justify-center gap-6">
-            <div>
-              <span className="text-xs text-white/60 block">Total Score</span>
-              <span className="text-4xl sm:text-5xl font-black text-[#FFD800]">
-                {scoreResult.totalScore}
-              </span>
-              <span className="text-xs text-white/60"> / {scoreResult.maxScore}</span>
-            </div>
-
-            <div className="h-12 w-[1px] bg-white/20" />
-
-            <div>
-              <span className="text-xs text-white/60 block">Accuracy</span>
-              <span className="text-4xl sm:text-5xl font-black text-[#20D66B]">
-                {scoreResult.accuracy}%
-              </span>
-            </div>
-          </div>
+  if (error || !testPaper) {
+    return (
+      <div className="bg-white rounded-3xl border border-[#E7E3F5] p-12 text-center max-w-lg mx-auto shadow-xs space-y-4 my-8">
+        <div className="w-16 h-16 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto">
+          <AlertCircle size={32} />
         </div>
-
-        {/* Breakdown Matrix */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="p-5 rounded-2xl bg-white border border-[#E7E3F5] text-center shadow-xs">
-            <div className="text-2xl font-extrabold text-[#20D66B]">
-              {scoreResult.correctCount}
-            </div>
-            <div className="text-xs text-[#6E6990]">Correct Answers (+3)</div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white border border-[#E7E3F5] text-center shadow-xs">
-            <div className="text-2xl font-extrabold text-[#FF3F68]">
-              {scoreResult.incorrectCount}
-            </div>
-            <div className="text-xs text-[#6E6990]">Incorrect Answers (-1)</div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white border border-[#E7E3F5] text-center shadow-xs">
-            <div className="text-2xl font-extrabold text-[#6E6990]">
-              {scoreResult.unattemptedCount}
-            </div>
-            <div className="text-xs text-[#6E6990]">Unattempted (0)</div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white border border-[#E7E3F5] text-center shadow-xs">
-            <div className="text-2xl font-extrabold text-[#3F328A]">
-              {Math.floor(scoreResult.timeTaken / 60)}m
-            </div>
-            <div className="text-xs text-[#6E6990]">Time Spent</div>
-          </div>
-        </div>
-
-        {/* Detailed Solutions Section */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E7E3F5] shadow-xs space-y-6">
-          <h3 className="text-xl font-extrabold text-[#17152A]">
-            Question-by-Question Detailed Solutions
-          </h3>
-
-          <div className="space-y-6">
-            {questions.map((q, idx) => {
-              const studentAns = userAnswers[q.id];
-              const isCorrect = studentAns === q.correctOption;
-
-              return (
-                <div
-                  key={q.id}
-                  className="p-5 rounded-2xl bg-[#FAFAFD] border border-[#E7E3F5] space-y-3 text-xs sm:text-sm"
-                >
-                  <div className="flex items-center justify-between pb-2 border-b border-[#E7E3F5]">
-                    <span className="font-bold text-[#3F328A]">
-                      Question {idx + 1} ({q.subject})
-                    </span>
-                    <span
-                      className={`px-2.5 py-0.5 rounded-md font-bold text-xs ${
-                        studentAns === undefined
-                          ? 'bg-[#F1EFFB] text-[#6E6990]'
-                          : isCorrect
-                          ? 'bg-[#E8FAF0] text-[#16A34A]'
-                          : 'bg-[#FFE8ED] text-[#FF3F68]'
-                      }`}
-                    >
-                      {studentAns === undefined
-                        ? 'Unattempted'
-                        : isCorrect
-                        ? '✓ Correct (+3)'
-                        : '✗ Incorrect (-1)'}
-                    </span>
-                  </div>
-
-                  {/* Question Content */}
-                  <div className="font-medium text-[#17152A]">
-                    <MathRenderer content={q.questionText} />
-                  </div>
-
-                  {/* Options */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    {q.options.map((opt) => (
-                      <div
-                        key={opt.key}
-                        className={`p-2.5 rounded-xl border flex items-center gap-2 ${
-                          opt.key === q.correctOption
-                            ? 'bg-[#E8FAF0] border-[#20D66B] font-bold text-[#16A34A]'
-                            : opt.key === studentAns
-                            ? 'bg-[#FFE8ED] border-[#FF3F68] text-[#FF3F68]'
-                            : 'bg-white border-[#E7E3F5] text-[#17152A]'
-                        }`}
-                      >
-                        <span className="w-5 h-5 rounded-md bg-black/5 flex items-center justify-center font-bold">
-                          {opt.key}
-                        </span>
-                        <MathRenderer content={opt.text} />
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Explanation */}
-                  {q.explanation && (
-                    <div className="pt-2 border-t border-[#E7E3F5] text-xs text-[#6E6990]">
-                      <strong className="text-[#3F328A]">Explanation:</strong>{' '}
-                      <MathRenderer content={q.explanation} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="flex justify-center gap-4">
+        <h2 className="font-black text-xl text-[#17152A]">Test Paper Unavailable</h2>
+        <p className="text-xs text-[#6E6990] leading-relaxed max-w-sm mx-auto">
+          {error || `The requested test paper (#${paperIdRaw}) does not exist in the active test series catalogue.`}
+        </p>
+        <div className="pt-2">
           <Link
-            href="/student/dashboard"
-            className="px-8 py-3.5 rounded-xl bg-[#3F328A] text-white font-bold text-xs shadow-md"
+            href="/student/tests"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#3F328A] text-white text-xs font-bold hover:bg-[#2A2356] transition"
           >
-            Back to Student Dashboard
+            <ChevronLeft size={16} />
+            <span>Return to Test Series</span>
           </Link>
         </div>
       </div>
     );
   }
 
+  // Calculate positive and negative marks pattern based on exam
+  const examNorm = testPaper.examTag?.toLowerCase() || '';
+  const isBitsat = examNorm.includes('bitsat');
+  const isJee = examNorm.includes('jee');
+  const positiveMarks = isBitsat ? 3 : (isJee ? 4 : 1);
+  const negativeMarks = isBitsat ? 1 : (isJee ? 1 : 0);
+
   return (
-    <div className="space-y-4">
-      {/* 1. TOP EXAM HEADER */}
-      <div className="bg-[#17152A] text-white p-4 rounded-2xl flex items-center justify-between shadow-md">
-        <div>
-          <h2 className="font-bold text-sm sm:text-base">{testPaper.title}</h2>
-          <span className="text-[11px] text-white/70">
-            Subject: <strong className="text-[#FFD800]">{currentQuestion.subject}</strong>
+    <div className="max-w-4xl mx-auto space-y-6 pb-12">
+      {/* Navigation Header */}
+      <div className="flex items-center justify-between">
+        <Link
+          href="/student/tests"
+          className="inline-flex items-center gap-2 text-xs font-bold text-[#6E6990] hover:text-[#3F328A] transition-colors"
+        >
+          <ChevronLeft size={16} />
+          <span>Back to Test Series</span>
+        </Link>
+        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-[#EBF9F1] text-[#1FA660] border border-[#BDECD1]">
+          {testPaper.status}
+        </span>
+      </div>
+
+      {/* Main Paper Header Card */}
+      <div className="bg-white rounded-3xl border border-[#E7E3F5] p-6 sm:p-8 shadow-xs">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="px-3 py-1 rounded-full text-xs font-black bg-[#F0EDFD] text-[#3F328A] border border-[#E2DCFB]">
+            {testPaper.examTag}
+          </span>
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
+            Target Year {testPaper.targetYear}
+          </span>
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+            Paper ID #{testPaper.id}
           </span>
         </div>
 
-        {/* Live Timer */}
-        <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FF3F68] font-mono font-bold text-sm text-white shadow-inner">
-          <Clock size={16} />
-          <span>{formatTimer(timeLeftSeconds)}</span>
+        <h1 className="text-2xl sm:text-3xl font-black text-[#17152A] tracking-tight mb-3">
+          {testPaper.title}
+        </h1>
+
+        <p className="text-sm text-[#6E6990] leading-relaxed mb-6">
+          {testPaper.description ||
+            'Full syllabus Computer-Based Test (CBT) matching official exam patterns and numerical evaluation rules.'}
+        </p>
+
+        {/* Key Metrics Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-[#F6F4FF] border border-[#F1EFFB]">
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6990]">Total Duration</span>
+            <div className="flex items-center gap-1.5 text-sm sm:text-base font-extrabold text-[#17152A]">
+              <Clock size={16} className="text-[#3F328A]" />
+              <span>{testPaper.durationMinutes} Mins</span>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6990]">Questions</span>
+            <div className="flex items-center gap-1.5 text-sm sm:text-base font-extrabold text-[#17152A]">
+              <FileQuestion size={16} className="text-[#3F328A]" />
+              <span>{testPaper.totalQuestions} Questions</span>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6990]">Maximum Marks</span>
+            <div className="flex items-center gap-1.5 text-sm sm:text-base font-extrabold text-[#17152A]">
+              <Award size={16} className="text-[#3F328A]" />
+              <span>{testPaper.totalMarks} Marks</span>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6990]">Marking Pattern</span>
+            <div className="flex items-center gap-1.5 text-sm sm:text-base font-extrabold text-[#17152A]">
+              <CheckCircle2 size={16} className="text-[#1FA660]" />
+              <span>+{positiveMarks} / -{negativeMarks}</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* 2. CBT WORKSPACE GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEFT: Active Question & Options Box */}
-        <div className="lg:col-span-8 bg-white rounded-3xl p-6 sm:p-8 border border-[#E7E3F5] shadow-xs space-y-6">
-          <div className="flex items-center justify-between pb-3 border-b border-[#F1EFFB]">
-            <span className="font-extrabold text-sm text-[#3F328A]">
-              Question {currentIndex + 1} of {questions.length}
-            </span>
-            <div className="flex items-center gap-3 text-xs">
-              <span className="text-[#20D66B] font-bold">+{currentQuestion.marksPositive}</span>
-              <span className="text-[#FF3F68] font-bold">-{currentQuestion.marksNegative}</span>
+      {/* CBT Instructions Card */}
+      <div className="bg-white rounded-3xl border border-[#E7E3F5] p-6 sm:p-8 shadow-xs space-y-6">
+        <div className="flex items-center gap-2 text-base font-black text-[#17152A]">
+          <BookOpen size={20} className="text-[#3F328A]" />
+          <h2>Official CBT Instructions &amp; Examination Guidelines</h2>
+        </div>
+
+        <div className="space-y-4 text-xs text-[#6E6990] leading-relaxed">
+          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+            <Info size={18} className="text-[#3F328A] shrink-0 mt-0.5" />
+            <div>
+              <strong className="text-[#17152A] block mb-1">Standard CBT Countdown Clock</strong>
+              <span>
+                The clock in the examination interface will display remaining time. Once the countdown timer reaches zero, your test session will automatically submit.
+              </span>
             </div>
           </div>
 
-          {/* Question Text with Math */}
-          <div className="text-base text-[#17152A] font-medium leading-relaxed">
-            <MathRenderer content={currentQuestion.questionText} />
+          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+            <CheckCircle2 size={18} className="text-[#1FA660] shrink-0 mt-0.5" />
+            <div>
+              <strong className="text-[#17152A] block mb-1">Question Palette Status Legend</strong>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 font-medium">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" /> Answered</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-rose-500 inline-block" /> Not Answered</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block" /> Review Flagged</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-slate-300 inline-block" /> Not Visited</span>
+              </div>
+            </div>
           </div>
 
-          {/* Options (MCQ) */}
-          {currentQuestion.type === 'MCQ' && (
-            <div className="space-y-3">
-              {currentQuestion.options.map((opt) => {
-                const isSelected = userAnswers[currentQuestion.id] === opt.key;
-                return (
-                  <div
-                    key={opt.key}
-                    onClick={() => handleSelectOption(opt.key)}
-                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-center gap-3 ${
-                      isSelected
-                        ? 'border-[#3F328A] bg-[#F0EDFD] shadow-xs'
-                        : 'border-[#E7E3F5] hover:border-[#3F328A]/30 bg-white'
-                    }`}
-                  >
-                    <div
-                      className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs ${
-                        isSelected
-                          ? 'bg-[#3F328A] text-white'
-                          : 'bg-[#F6F4FF] text-[#6E6990]'
-                      }`}
-                    >
-                      {opt.key}
-                    </div>
-                    <div className="text-sm font-medium text-[#17152A]">
-                      <MathRenderer content={opt.text} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Numerical Input (for NUMERICAL type) */}
-          {currentQuestion.type === 'NUMERICAL' && (
-            <div className="space-y-3">
-              <label className="block text-xs font-bold text-[#17152A]">
-                Enter Numerical Answer:
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. 42.5"
-                value={userAnswers[currentQuestion.id] || ''}
-                onChange={(e) => handleSelectOption(e.target.value)}
-                className="w-full sm:w-64 px-4 py-3 rounded-xl border border-[#E7E3F5] text-base font-mono font-bold focus:outline-none focus:border-[#3F328A]"
-              />
-            </div>
-          )}
-
-          {/* Action Buttons Footer */}
-          <div className="pt-6 border-t border-[#F1EFFB] flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleToggleReview}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-colors ${
-                  markedForReview.includes(currentQuestion.id)
-                    ? 'bg-[#5B4DB3] text-white'
-                    : 'bg-[#F0EDFD] text-[#3F328A] hover:bg-[#E2DCFB]'
-                }`}
-              >
-                {markedForReview.includes(currentQuestion.id)
-                  ? 'Marked for Review'
-                  : 'Mark for Review'}
-              </button>
-
-              <button
-                onClick={handleClearAnswer}
-                className="px-4 py-2.5 rounded-xl border border-[#E7E3F5] text-xs font-semibold text-[#6E6990] hover:text-[#FF3F68]"
-              >
-                Clear Response
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handlePrev}
-                disabled={currentIndex === 0}
-                className="px-4 py-2.5 rounded-xl border border-[#E7E3F5] text-xs font-bold text-[#17152A] disabled:opacity-30"
-              >
-                Previous
-              </button>
-
-              <button
-                onClick={handleNext}
-                className="px-6 py-2.5 rounded-xl bg-[#3F328A] hover:bg-[#2D246B] text-white font-bold text-xs transition-colors flex items-center gap-1 shadow-sm"
-              >
-                <span>Save & Next</span>
-                <ChevronRight size={15} />
-              </button>
+          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+            <ShieldAlert size={18} className="text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <strong className="text-amber-950 block mb-1">Academic Integrity &amp; Browser Security</strong>
+              <span>
+                Full-screen mode will be required during live examination. Leaving full screen or switching tabs registers an anomaly warning with the proctoring monitor.
+              </span>
             </div>
           </div>
         </div>
 
-        {/* RIGHT: Palette & Submit */}
-        <div className="lg:col-span-4 space-y-4">
-          <div className="bg-white rounded-3xl p-6 border border-[#E7E3F5] shadow-xs space-y-4">
-            <h3 className="font-extrabold text-sm text-[#17152A]">Question Palette</h3>
+        {/* Readiness Checkbox */}
+        <div className="pt-4 border-t border-[#E7E3F5]">
+          <label className="flex items-start gap-3 p-4 rounded-2xl bg-[#F6F4FF] border border-[#E2DCFB] cursor-pointer hover:bg-[#F0EDFD] transition">
+            <input
+              type="checkbox"
+              checked={isReadyConfirmed}
+              onChange={(e) => setIsReadyConfirmed(e.target.checked)}
+              className="mt-0.5 w-4 h-4 text-[#3F328A] border-[#C2BAEB] rounded focus:ring-[#3F328A]"
+            />
+            <span className="text-xs font-semibold text-[#17152A] leading-relaxed">
+              I have read and understood all CBT examination instructions, sectional rules, and marking schemes. I confirm that I am ready to begin the timed test session.
+            </span>
+          </label>
+        </div>
 
-            {/* Matrix Legend */}
-            <div className="grid grid-cols-2 gap-2 text-[11px] text-[#6E6990] pb-2 border-b border-[#F1EFFB]">
-              <div className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-[#20D66B]" />
-                <span>Answered</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-[#FF3F68]" />
-                <span>Not Answered</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-[#5B4DB3]" />
-                <span>Marked for Review</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-white border border-[#E7E3F5]" />
-                <span>Not Visited</span>
-              </div>
-            </div>
-
-            {/* Matrix Grid */}
-            <div className="grid grid-cols-5 gap-2 max-h-60 overflow-y-auto pr-1">
-              {questions.map((q, idx) => {
-                const isCurrent = currentIndex === idx;
-                return (
-                  <button
-                    key={q.id}
-                    onClick={() => handleJumpToQuestion(idx)}
-                    className={`h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${getQuestionStatusClass(
-                      q
-                    )} ${isCurrent ? 'ring-2 ring-[#17152A] scale-105' : ''}`}
-                  >
-                    {idx + 1}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Submit Test Button */}
-            <div className="pt-4 border-t border-[#F1EFFB]">
-              <button
-                onClick={handleSubmitTest}
-                className="w-full py-3.5 rounded-xl bg-[#20D66B] hover:bg-[#16A34A] text-[#17152A] font-extrabold text-xs transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-              >
-                <Send size={15} />
-                <span>Submit Final Test Paper</span>
-              </button>
-            </div>
+        {/* Error Alert if Starting Fails */}
+        {startError && (
+          <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-center gap-3">
+            <AlertCircle size={18} className="text-red-600 shrink-0" />
+            <div className="flex-1 font-semibold">{startError}</div>
           </div>
+        )}
+
+        {/* Action Controls */}
+        <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+          <Link
+            href="/student/tests"
+            className="px-5 py-2.5 rounded-xl border border-[#E7E3F5] text-xs font-bold text-[#6E6990] hover:text-[#17152A] hover:bg-slate-50 transition text-center"
+          >
+            Back to Test Series
+          </Link>
+
+          <button
+            onClick={handleStartAttempt}
+            disabled={!isReadyConfirmed || isStarting}
+            className={`px-8 py-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 shadow-sm transition-all ${
+              isReadyConfirmed && !isStarting
+                ? 'bg-[#3F328A] hover:bg-[#2A2356] text-white hover:shadow-md cursor-pointer'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            }`}
+          >
+            {isStarting ? (
+              <>
+                <LoadingSpinner size="sm" className="text-white" />
+                <span>Initializing Secure Session...</span>
+              </>
+            ) : (
+              <>
+                <Play size={14} className="fill-current" />
+                <span>I Am Ready to Begin</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from '@/src/compat/router';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Sparkles, GraduationCap, ArrowLeft, CheckCircle2 } from 'lucide-react';
-import { apiLoginUser } from '../services/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -11,6 +11,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   
+  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const fromEnroll = location.state?.fromEnroll;
@@ -28,43 +29,20 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const res = await apiLoginUser(email, password);
+      const res = await login(email, password);
       setIsLoading(false);
 
-      const isAdmin = email.toLowerCase().includes('admin');
-      const targetRoute = fromEnroll ? '/cart' : (isAdmin ? '/admin' : '/student/dashboard');
-
-      const userObj = {
-        email,
-        fullName: isAdmin ? 'Admin' : (email.split('@')[0] || 'Student'),
-        role: isAdmin ? 'ADMIN' : 'STUDENT'
-      };
-
-      if (res && res.respCode === 200) {
-        if (res.token) {
-          localStorage.setItem('10q_token', res.token);
-        }
-        const studentData = res.user ? res.user : userObj;
-        localStorage.setItem('10q_user', JSON.stringify(studentData));
-        localStorage.setItem('10q_auth_user_fresh_v1', JSON.stringify(studentData));
-        navigate(targetRoute);
-      } else {
-        localStorage.setItem('10q_user', JSON.stringify(userObj));
-        localStorage.setItem('10q_auth_user_fresh_v1', JSON.stringify(userObj));
-        navigate(targetRoute);
+      if (!res.success) {
+        setErrorMessage(res.error || 'Invalid email or password.');
+        return;
       }
+
+      const userRole = res.user?.role;
+      const targetRoute = fromEnroll ? '/cart' : (userRole === 'ADMIN' ? '/admin' : '/student/dashboard');
+      navigate(targetRoute);
     } catch (err) {
       setIsLoading(false);
-      const isAdmin = email.toLowerCase().includes('admin');
-      const targetRoute = fromEnroll ? '/cart' : (isAdmin ? '/admin' : '/student/dashboard');
-      const fallbackUser = {
-        email,
-        fullName: isAdmin ? 'Admin' : (email.split('@')[0] || 'Student'),
-        role: isAdmin ? 'ADMIN' : 'STUDENT'
-      };
-      localStorage.setItem('10q_user', JSON.stringify(fallbackUser));
-      localStorage.setItem('10q_auth_user_fresh_v1', JSON.stringify(fallbackUser));
-      navigate(targetRoute);
+      setErrorMessage(err?.message || 'Authentication error. Please verify your credentials.');
     }
   };
 

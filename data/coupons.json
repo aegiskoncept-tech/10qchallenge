@@ -1,0 +1,47 @@
+[
+  {
+    "id": 1,
+    "code": "BITSAT500",
+    "discountType": "FLAT",
+    "discountValue": 500,
+    "minOrderAmount": 2000,
+    "description": "Flat ₹500 discount for BITSAT Champions batch enrollments.",
+    "usageLimit": 500,
+    "usedCount": 42,
+    "isActive": true,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System",
+    "updatedBy": "System"
+  },
+  {
+    "id": 2,
+    "code": "EARLYBIRD",
+    "discountType": "PERCENTAGE",
+    "discountValue": 20,
+    "minOrderAmount": 1000,
+    "maxDiscount": 1000,
+    "description": "20% off for early aspirant enrollments.",
+    "usageLimit": 200,
+    "usedCount": 78,
+    "isActive": true,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System",
+    "updatedBy": "System"
+  },
+  {
+    "id": 3,
+    "code": "RANKER10",
+    "discountType": "PERCENTAGE",
+    "discountValue": 10,
+    "minOrderAmount": 500,
+    "description": "10% discount on all mock test series and course packs.",
+    "usedCount": 115,
+    "isActive": true,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System",
+    "updatedBy": "System"
+  }
+]

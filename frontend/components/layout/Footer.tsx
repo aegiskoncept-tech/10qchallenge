@@ -104,18 +104,23 @@ export function Footer() {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/about" className="hover:text-amber-400 transition-colors">
+                  <Link href="/terms" className="hover:text-amber-400 transition-colors">
                     Terms & Conditions
                   </Link>
                 </li>
                 <li>
-                  <Link href="/about" className="hover:text-amber-400 transition-colors">
+                  <Link href="/privacy" className="hover:text-amber-400 transition-colors">
                     Privacy Policy
                   </Link>
                 </li>
                 <li>
-                  <Link href="/about" className="hover:text-amber-400 transition-colors">
+                  <Link href="/refund-policy" className="hover:text-amber-400 transition-colors">
                     Refund Policy
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/disclaimer" className="hover:text-amber-400 transition-colors">
+                    Disclaimer
                   </Link>
                 </li>
                 <li>

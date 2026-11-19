@@ -1,0 +1,47 @@
+[
+  {
+    "id": 1,
+    "title": "Mechanics & 1D Kinematics - Complete Masterclass",
+    "vimeoVideoId": "824804225",
+    "subject": "Physics",
+    "chapter": "Mechanics & Kinematics",
+    "description": "High-yield derivations, calculus applications, and shortcut tricks for BITSAT & JEE.",
+    "durationMinutes": 75,
+    "isFreePreview": true,
+    "status": "Published",
+    "displayOrder": 1,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System"
+  },
+  {
+    "id": 2,
+    "title": "Rotational Dynamics & Moment of Inertia Shortcuts",
+    "vimeoVideoId": "824804226",
+    "subject": "Physics",
+    "chapter": "Rotational Motion & Gravitation",
+    "description": "Standard inertia formulas, parallel and perpendicular axes theorem with past-year problems.",
+    "durationMinutes": 60,
+    "isFreePreview": false,
+    "status": "Published",
+    "displayOrder": 2,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System"
+  },
+  {
+    "id": 3,
+    "title": "Chemical Bonding & Hybridization Speed Techniques",
+    "vimeoVideoId": "824804227",
+    "subject": "Chemistry",
+    "chapter": "Chemical Bonding & Molecular Structure",
+    "description": "VSEPR geometry predictions, steric number rules, and magnetic moment calculations.",
+    "durationMinutes": 50,
+    "isFreePreview": true,
+    "status": "Published",
+    "displayOrder": 1,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "createdBy": "System"
+  }
+]

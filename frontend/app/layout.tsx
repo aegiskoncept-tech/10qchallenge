@@ -1,16 +1,10 @@
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { SideCart } from '@/components/layout/SideCart';
 
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
-  variable: '--font-sans',
-  display: 'swap',
-});
+const fontVariable = 'font-sans';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://10qchallenge.in'),
@@ -66,7 +60,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${plusJakartaSans.variable} scroll-smooth`}>
+    <html lang="en" className={`${fontVariable} scroll-smooth`}>
       <body className="font-sans antialiased text-slate-900 bg-[#FAFAFD] min-h-screen flex flex-col selection:bg-[#3d2c8d] selection:text-white">
         <AuthProvider>
           <CartProvider>

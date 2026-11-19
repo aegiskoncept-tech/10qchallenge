@@ -3,13 +3,27 @@
 
 const API_BASE_URL = '/api';
 
+function getCsrfTokenFromCookie() {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(/(?:^|; )10q_csrf_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 async function fetchAPI(endpoint, method = 'POST', body = null) {
   try {
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+
+    const csrfToken = getCsrfTokenFromCookie();
+    if (csrfToken && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase())) {
+      headers['x-csrf-token'] = csrfToken;
+    }
+
     const options = {
       method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
+      credentials: 'same-origin',
     };
 
     if (body) {
@@ -18,7 +32,8 @@ async function fetchAPI(endpoint, method = 'POST', body = null) {
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
     if (!response.ok) {
-      throw new Error(`API Error: ${response.statusText}`);
+      const errJson = await response.json().catch(() => null);
+      throw new Error(errJson?.error || `API Error: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -54,11 +69,11 @@ export const apiGetExams = async () => {
 
 // 4. USER AUTH & ACCOUNTS API
 export const apiLoginUser = async (email, password) => {
-  return fetchAPI('/user/login', 'POST', { email, password });
+  return fetchAPI('/auth/login', 'POST', { email, password });
 };
 
 export const apiRegisterUser = async (userData) => {
-  return fetchAPI('/user/register', 'POST', userData);
+  return fetchAPI('/auth/register', 'POST', userData);
 };
 
 // 5. MASTER COUPONS API

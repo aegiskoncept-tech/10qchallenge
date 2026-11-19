@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "title": "BITSAT 2026 Session 1 Registration Announced",
+    "message": "Official registration portal is now active on bitsadmission.com. Check eligibility and exam dates.",
+    "targetAudience": "BITSAT",
+    "type": "EXAM_ALERT",
+    "priority": "HIGH",
+    "actionUrl": "https://www.bitsadmission.com",
+    "isActive": true,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "sentBy": "System Admin"
+  },
+  {
+    "id": 2,
+    "title": "Weekend All-India CBT Mock Test Schedule",
+    "message": "All-India CBT Mock Test #01 will be live this Sunday at 10:00 AM IST. Ensure you are ready.",
+    "targetAudience": "ALL",
+    "type": "ANNOUNCEMENT",
+    "priority": "NORMAL",
+    "actionUrl": "/student/tests",
+    "isActive": true,
+    "createdAt": "2026-11-02T00:00:00.000Z",
+    "sentBy": "Academic Desk"
+  }
+]

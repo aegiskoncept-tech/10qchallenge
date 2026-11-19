@@ -1,0 +1,76 @@
+[
+  {
+    "route": "/",
+    "name": "Homepage",
+    "metaTitle": "10Q Challenge | Speed & Accuracy CBT LMS for BITSAT & JEE",
+    "metaDescription": "Crack BITSAT, JEE Main, COMEDK & VITEEE with precision question practice, AI time analytics, and official CBT exam simulations.",
+    "keywords": [
+      "BITSAT mock test",
+      "JEE Main test series",
+      "10Q Challenge",
+      "CBT exam practice",
+      "Pilani rankers strategy"
+    ],
+    "ogTitle": "10Q Challenge - Master Entrance Exams with Speed & Precision",
+    "ogDescription": "Experience exact CBT simulations, formula masterclasses, and ranked percentile analysis.",
+    "ogImage": "/site/assets/og-home.jpg",
+    "canonicalUrl": "https://10qchallenge.in",
+    "robots": "index, follow",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "updatedBy": "System"
+  },
+  {
+    "route": "/courses",
+    "name": "Course Catalogue",
+    "metaTitle": "Elite Academic Courses & Masterclasses | 10Q Challenge",
+    "metaDescription": "Explore expert-curated physics, mathematics, chemistry and logical reasoning crash courses for BITSAT and top engineering entrance exams.",
+    "keywords": [
+      "BITSAT crash course",
+      "JEE formula revision",
+      "engineering entrance preparation"
+    ],
+    "ogTitle": "10Q Challenge Academic Courses",
+    "ogDescription": "Comprehensive video lectures and high-yield question banks.",
+    "ogImage": "/site/assets/og-courses.jpg",
+    "canonicalUrl": "https://10qchallenge.in/courses",
+    "robots": "index, follow",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "updatedBy": "System"
+  },
+  {
+    "route": "/test-series",
+    "name": "Test Series & Mocks",
+    "metaTitle": "Full-Length CBT Mock Tests | 10Q Challenge",
+    "metaDescription": "Practice with realistic CBT interfaces, instant scoring, speed-per-question telemetry, and complete step-by-step solutions.",
+    "keywords": [
+      "BITSAT online test series",
+      "JEE mock tests",
+      "CBT test engine"
+    ],
+    "ogTitle": "10Q Challenge CBT Mock Test Engine",
+    "ogDescription": "Simulate the exact examination hall environment before exam day.",
+    "ogImage": "/site/assets/og-tests.jpg",
+    "canonicalUrl": "https://10qchallenge.in/tests",
+    "robots": "index, follow",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "updatedBy": "System"
+  },
+  {
+    "route": "/blog",
+    "name": "Blog & Articles",
+    "metaTitle": "Exam Preparation Insights & Strategy Articles | 10Q Challenge",
+    "metaDescription": "Read proven ranker advice, subject masterclass breakdowns, and college admission cutoffs for top engineering universities.",
+    "keywords": [
+      "BITSAT strategy blog",
+      "college cutoffs 2026",
+      "exam preparation tips"
+    ],
+    "ogTitle": "10Q Challenge Educational Blog",
+    "ogDescription": "High-impact revision blueprints written by alumni and mentors.",
+    "ogImage": "/site/assets/og-blog.jpg",
+    "canonicalUrl": "https://10qchallenge.in/blog",
+    "robots": "index, follow",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "updatedBy": "System"
+  }
+]

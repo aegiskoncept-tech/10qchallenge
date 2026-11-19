@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from '@/src/compat/router';
 import { User, Mail, Phone, Lock, Eye, EyeOff, ArrowRight, Sparkles, GraduationCap, ArrowLeft, CheckCircle2 } from 'lucide-react';
-import { apiRegisterUser } from '../services/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Register() {
   const [fullName, setFullName] = useState('');
@@ -14,6 +14,7 @@ export default function Register() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  const { register } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const fromEnroll = location.state?.fromEnroll;
@@ -30,26 +31,26 @@ export default function Register() {
 
     setIsLoading(true);
 
-    const userObj = {
-      fullName,
-      email,
-      phone,
-      role: 'STUDENT',
-      targetExam
-    };
-
     try {
-      const res = await apiRegisterUser({ fullName, email, phone, password, targetExam });
+      const res = await register({
+        fullName,
+        email,
+        mobileNumber: phone,
+        password,
+        targetExam,
+      });
+
       setIsLoading(false);
-      const studentData = (res && res.user) ? { ...res.user, role: 'STUDENT', targetExam } : userObj;
-      localStorage.setItem('10q_user', JSON.stringify(studentData));
-      localStorage.setItem('10q_auth_user_fresh_v1', JSON.stringify(studentData));
+
+      if (!res.success) {
+        setErrorMessage(res.error || 'Registration failed. Please check your details.');
+        return;
+      }
+
       navigate(fromEnroll ? '/cart' : '/student/dashboard');
     } catch (err) {
       setIsLoading(false);
-      localStorage.setItem('10q_user', JSON.stringify(userObj));
-      localStorage.setItem('10q_auth_user_fresh_v1', JSON.stringify(userObj));
-      navigate(fromEnroll ? '/cart' : '/student/dashboard');
+      setErrorMessage(err?.message || 'An error occurred during registration.');
     }
   };
 
@@ -253,11 +254,10 @@ export default function Register() {
                     className="w-full px-3.5 py-2.5 bg-slate-50/80 border border-slate-200 rounded-xl text-sm text-slate-900 font-medium focus:outline-none focus:border-amber-500 focus:bg-white focus:ring-4 focus:ring-amber-500/10 transition-all"
                   >
                     <option value="BITSAT">BITSAT 2026</option>
-                    <option value="JEE Main">JEE Main 2026</option>
-                    <option value="JEE Advanced">JEE Advanced 2026</option>
+                    <option value="JEE">JEE (Main & Advanced) 2026</option>
+                    <option value="Comedk">COMEDK 2026</option>
+                    <option value="Manipal (MET)">Manipal MET 2026</option>
                     <option value="VITEEE">VITEEE 2026</option>
-                    <option value="MET">Manipal MET 2026</option>
-                    <option value="COMEDK">COMEDK 2026</option>
                   </select>
                 </div>
 

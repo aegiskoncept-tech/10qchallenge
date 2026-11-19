@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQuestionById, updateQuestion, deleteQuestion } from '@/lib/db/questions';
+import { requireAdmin } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,6 +8,11 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(req, 'QUESTIONS', 'GET_QUESTION');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { id } = await params;
     const questionId = Number(id);
@@ -32,6 +38,11 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(req, 'QUESTIONS', 'UPDATE_QUESTION');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { id } = await params;
     const questionId = Number(id);
@@ -41,7 +52,7 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const adminUser = req.headers.get('x-admin-user') || body.adminUser || 'Administrator';
+    const adminUser = `${auth.user.fullName} (${auth.user.email})`;
 
     const result = await updateQuestion(questionId, body, adminUser);
 
@@ -64,6 +75,11 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(req, 'QUESTIONS', 'DELETE_QUESTION');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { id } = await params;
     const questionId = Number(id);

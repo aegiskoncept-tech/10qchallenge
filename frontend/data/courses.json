@@ -30,9 +30,13 @@
     "reviewsCount": 142,
     "mentor": "Harshal Jain",
     "createdBy": "Admin_A@10qchallenge.in",
-    "updatedBy": "Admin_A@10qchallenge.in",
+    "updatedBy": "Master Admin (test.admin@10qchallenge.in)",
     "createdAt": "2026-11-14T21:45:15.997Z",
-    "updatedAt": "2026-11-14T21:45:16.004Z"
+    "updatedAt": "2026-11-18T08:24:27.922Z",
+    "examTag": "BITSAT",
+    "discountPrice": 4999,
+    "thumbnailUrl": "/uploads/courses/bitsat-crash-thumb.png",
+    "bannerUrl": "/uploads/courses/bitsat-crash-banner.png"
   },
   {
     "id": 2,

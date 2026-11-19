@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getExamBySlugOrId, updateExam, deleteExam } from '@/lib/db/exams';
+import { requireAdmin } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,6 +8,11 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(req, 'EXAMS', 'GET_EXAM');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { id } = await params;
     const numId = Number(id);
@@ -31,6 +37,11 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(req, 'EXAMS', 'UPDATE_EXAM');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { id } = await params;
     const numId = Number(id);
@@ -40,7 +51,7 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const adminUser = req.headers.get('x-admin-user') || body.adminUser || 'Administrator';
+    const adminUser = `${auth.user.fullName} (${auth.user.email})`;
 
     const result = await updateExam(numId, body, adminUser);
 
@@ -63,6 +74,11 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(req, 'EXAMS', 'DELETE_EXAM');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { id } = await params;
     const numId = Number(id);
@@ -74,7 +90,6 @@ export async function DELETE(
     const result = await deleteExam(numId);
 
     if (!result.success) {
-      // 400 Bad Request with dependency error
       return NextResponse.json(
         {
           success: false,

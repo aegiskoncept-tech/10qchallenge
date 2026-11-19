@@ -96,6 +96,15 @@ export const CANONICAL_DEFAULT_SUBJECTS: SubjectRecord[] = [
 
 // Helper to determine persistent storage file paths for subjects
 function getSubjectDataPaths(): string[] {
+  if (process.env.DATA_STORE_DIR) {
+    const custom = path.resolve(process.env.DATA_STORE_DIR, 'subjects.json');
+    const dir = path.dirname(custom);
+    if (!fs.existsSync(dir)) {
+      try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+    }
+    return [custom];
+  }
+
   const cwd = process.cwd();
   const candidates = [
     path.join(cwd, 'data', 'subjects.json'),
@@ -131,6 +140,15 @@ function getSubjectDataPaths(): string[] {
 
 // Helper to determine persistent storage file paths for course-subject relationships
 function getCourseSubjectDataPaths(): string[] {
+  if (process.env.DATA_STORE_DIR) {
+    const custom = path.resolve(process.env.DATA_STORE_DIR, 'course-subjects.json');
+    const dir = path.dirname(custom);
+    if (!fs.existsSync(dir)) {
+      try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+    }
+    return [custom];
+  }
+
   const cwd = process.cwd();
   const candidates = [
     path.join(cwd, 'data', 'course-subjects.json'),

@@ -38,13 +38,9 @@ const { createServer } = require('http');
 const { parse } = require('url');
 
 // Determine correct frontend app directory
-let frontendDir = __dirname;
-if (fs.existsSync(path.join(__dirname, 'frontend', '.next', 'BUILD_ID'))) {
-  frontendDir = path.join(__dirname, 'frontend');
-} else if (fs.existsSync(path.join(__dirname, '.next', 'BUILD_ID'))) {
+let frontendDir = path.join(__dirname, 'frontend');
+if (!fs.existsSync(path.join(frontendDir, 'app')) && !fs.existsSync(path.join(frontendDir, 'package.json'))) {
   frontendDir = __dirname;
-} else if (fs.existsSync(path.join(__dirname, 'frontend', 'app')) || fs.existsSync(path.join(__dirname, 'frontend', 'package.json'))) {
-  frontendDir = path.join(__dirname, 'frontend');
 }
 
 // Ensure module resolution searches all potential node_modules paths

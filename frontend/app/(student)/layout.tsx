@@ -13,15 +13,15 @@ export default function StudentLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    // If not authenticated, redirect to login
-    if (!isAuthenticated) {
-      router.push('/login');
+    // If not authenticated and done loading, redirect to login
+    if (!isLoading && !isAuthenticated) {
+      router.push('/login?redirect=/student/dashboard');
     }
-  }, [isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, router]);
 
   // Lock body scroll on student mobile menu open
   useEffect(() => {
@@ -35,10 +35,10 @@ export default function StudentLayout({
     };
   }, [mobileMenuOpen]);
 
-  if (!isAuthenticated) {
+  if (isLoading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAFD]">
-        <p className="text-xs text-[#6E6990]">Loading classroom session...</p>
+        <p className="text-xs text-[#6E6990] animate-pulse">Loading classroom session...</p>
       </div>
     );
   }
@@ -106,14 +106,18 @@ export default function StudentLayout({
               <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#FF3F68]" />
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-full bg-[#3F328A] text-white flex items-center justify-center font-bold text-xs">
+            <Link
+              href="/student/profile"
+              className="flex items-center gap-2 hover:opacity-85 transition-opacity"
+              title="View & Edit Profile"
+            >
+              <div className="w-9 h-9 rounded-full bg-[#3F328A] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
                 {user?.fullName?.charAt(0) || 'S'}
               </div>
               <span className="text-xs font-bold text-[#17152A] hidden md:inline truncate max-w-[120px]">
                 {user?.fullName || 'Student'}
               </span>
-            </div>
+            </Link>
           </div>
         </header>
 

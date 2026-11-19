@@ -6,12 +6,14 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   GraduationCap,
+  TrendingUp,
   FileQuestion,
   HelpCircle,
   Receipt,
   LogOut,
   ExternalLink,
   BookOpen,
+  User,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -27,8 +29,13 @@ const NAV_ITEMS = [
     icon: GraduationCap,
   },
   {
+    label: 'Learning Progress',
+    href: '/student/progress',
+    icon: TrendingUp,
+  },
+  {
     label: 'Test Series & CBT',
-    href: '/student/tests/1', // Links to sample CBT or list
+    href: '/student/tests',
     icon: FileQuestion,
   },
   {
@@ -40,6 +47,11 @@ const NAV_ITEMS = [
     label: 'Invoices & Orders',
     href: '/student/invoices',
     icon: Receipt,
+  },
+  {
+    label: 'Profile & Account',
+    href: '/student/profile',
+    icon: User,
   },
 ];
 
@@ -73,18 +85,24 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({ onItemClick }) =
 
         {/* Student Profile Quick View */}
         {user && (
-          <div className="p-4 mx-3 my-4 rounded-2xl bg-[#F6F4FF] border border-[#E7E3F5] flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#3F328A] text-white font-bold flex items-center justify-center text-sm">
+          <Link
+            href="/student/profile"
+            onClick={onItemClick}
+            className="p-4 mx-3 my-4 rounded-2xl bg-[#F6F4FF] hover:bg-[#ECE8FD] border border-[#E7E3F5] flex items-center gap-3 transition-colors block group cursor-pointer"
+          >
+            <div className="w-10 h-10 rounded-full bg-[#3F328A] group-hover:bg-[#5034EB] text-white font-bold flex items-center justify-center text-sm transition-colors shrink-0">
               {user.fullName.charAt(0)}
             </div>
             <div className="overflow-hidden">
-              <h4 className="font-bold text-xs text-[#17152A] truncate">{user.fullName}</h4>
+              <h4 className="font-bold text-xs text-[#17152A] group-hover:text-[#5034EB] truncate transition-colors">
+                {user.fullName}
+              </h4>
               <p className="text-[11px] text-[#6E6990] truncate">{user.email}</p>
               <span className="inline-block mt-1 px-2 py-0.5 rounded-md text-[9px] font-bold bg-[#FFE8ED] text-[#FF3F68]">
-                {user.targetExam || 'BITSAT 2025'} Aspirant
+                {user.targetExam || 'BITSAT 2026'} Aspirant
               </span>
             </div>
-          </div>
+          </Link>
         )}
 
         {/* Navigation Links */}

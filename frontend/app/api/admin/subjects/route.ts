@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminSubjects, createSubject } from '@/lib/db/subjects';
+import { requireAdmin } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAdmin(req, 'SUBJECTS', 'LIST_SUBJECTS');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || searchParams.get('q') || undefined;
@@ -26,9 +32,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAdmin(req, 'SUBJECTS', 'CREATE_SUBJECT');
+  if (!auth.authenticated || !auth.user) {
+    return auth.errorResponse!;
+  }
+
   try {
     const body = await req.json();
-    const adminUser = req.headers.get('x-admin-user') || body.adminUser || 'Administrator';
+    const adminUser = `${auth.user.fullName} (${auth.user.email})`;
 
     const result = await createSubject(body, adminUser);
 

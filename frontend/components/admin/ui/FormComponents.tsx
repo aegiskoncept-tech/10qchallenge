@@ -44,6 +44,7 @@ export interface FormFieldProps {
   required?: boolean;
   error?: string;
   helperText?: string;
+  description?: string;
   children: React.ReactNode;
   className?: string;
   htmlFor?: string;
@@ -54,10 +55,12 @@ export const FormField: React.FC<FormFieldProps> = ({
   required = false,
   error,
   helperText,
+  description,
   children,
   className = '',
   htmlFor
 }) => {
+  const displayHelper = helperText || description;
   return (
     <div className={`space-y-1 ${className}`}>
       <div className="flex items-center justify-between">
@@ -67,8 +70,8 @@ export const FormField: React.FC<FormFieldProps> = ({
         >
           {label} {required && <span className="text-[#E5484D]">*</span>}
         </label>
-        {helperText && !error && (
-          <span className="text-[11px] text-[#9AA5B8]">{helperText}</span>
+        {displayHelper && !error && (
+          <span className="text-[11px] text-[#9AA5B8]">{displayHelper}</span>
         )}
       </div>
       <div>{children}</div>
