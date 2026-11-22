@@ -55,6 +55,7 @@ frontend/data/test-attempts.json
 database/*.db
 database/*.db-wal
 database/*.db-shm
+frontend/database/
 database/pg_commerce_dev/
 database/pg_content_dev/
 database/pg_commerce_staging/
