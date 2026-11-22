@@ -13,10 +13,12 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || undefined;
     const subject = searchParams.get('subject') || undefined;
+    const category = searchParams.get('category') || undefined;
+    const status = searchParams.get('status') || undefined;
     const rawCourseId = searchParams.get('courseId');
     const courseId = rawCourseId ? parseInt(rawCourseId, 10) : undefined;
 
-    const list = getAdminDocuments(search, subject, courseId);
+    const list = getAdminDocuments(search, subject, courseId, category, status);
     return NextResponse.json({ success: true, data: list, count: list.length });
   } catch (err: any) {
     console.error('[GET /api/admin/documents Error]', err);
@@ -49,6 +51,8 @@ export async function POST(req: NextRequest) {
       const rawDisplayOrder = formData.get('displayOrder') as string;
       const rawPageCount = formData.get('pageCount') as string;
       const status = (formData.get('status') as string || 'Published').trim();
+      const isFreePreview = formData.get('isFreePreview') === 'true' || formData.get('isFreePreview') === '1';
+      const allowDownload = formData.get('allowDownload') !== null ? (formData.get('allowDownload') === 'true' || formData.get('allowDownload') === '1') : true;
 
       if (!title) {
         return NextResponse.json({ success: false, error: 'Document title is required.' }, { status: 400 });
@@ -135,6 +139,8 @@ export async function POST(req: NextRequest) {
           originalFilename: file.name,
           fileSizeBytes: savedFile.fileSizeBytes!,
           pageCount,
+          isFreePreview,
+          allowDownload,
           status: status as any,
           displayOrder,
         },

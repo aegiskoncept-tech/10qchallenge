@@ -1,7 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { readSubjectsFromDb } from './subjects';
+import { readCoursesFromDb } from './courses';
+import { readSubjectsFromDb, isSubjectAssignedToCourse } from './subjects';
 import { readChaptersFromDb } from './chapters';
+import { readTopicsFromDb } from './topics';
 
 export type QuestionType = 'objective' | 'numerical';
 export type DifficultyLevel = 'Low' | 'Medium' | 'High';
@@ -10,8 +12,11 @@ export type CorrectOption = 'A' | 'B' | 'C' | 'D';
 export interface QuestionRecord {
   id: number;
   questionType: QuestionType;
+  courseId?: number;
   subjectId: number;
   chapterId: number;
+  topicId?: number;
+  examId?: number;
   questionContent: string;
   // Objective MCQ options
   optionA?: string;
@@ -23,6 +28,9 @@ export interface QuestionRecord {
   rangeFrom?: number | string;
   rangeTo?: number | string;
   tolerance?: number | string;
+  // Scoring configuration
+  marks?: number;
+  negativeMarks?: number;
   // Common metadata
   explanation?: string;
   difficulty: DifficultyLevel;
@@ -302,33 +310,65 @@ export function sanitizeHtml(str: string): string {
 // Query: Admin Questions with academic names, filtering, search, and pagination
 export function getAdminQuestions(filters?: {
   questionType?: QuestionType;
+  courseId?: number;
   subjectId?: number;
   chapterId?: number;
+  topicId?: number;
+  examId?: number;
   difficulty?: DifficultyLevel;
   search?: string;
   isActive?: boolean;
 }): Array<
   QuestionRecord & {
+    courseId?: number;
+    courseTitle?: string;
+    courseExam?: string;
     subjectName: string;
     subjectCode?: string;
     chapterName: string;
     chapterCode?: string;
+    topicName?: string;
+    topicCode?: string;
   }
 > {
   const all = readQuestionsFromDb();
+  const courses = readCoursesFromDb();
   const subjects = readSubjectsFromDb();
   const chapters = readChaptersFromDb();
+  const topics = readTopicsFromDb();
+
+  const courseMap = new Map<number, { title: string; exam?: string }>();
+  courses.forEach((c) => courseMap.set(Number(c.id), { title: c.title, exam: c.exam }));
 
   const subjectMap = new Map<number, { name: string; code?: string }>();
   subjects.forEach((s) => subjectMap.set(Number(s.id), { name: s.subjectName, code: s.subjectCode }));
 
-  const chapterMap = new Map<number, { name: string; code?: string }>();
-  chapters.forEach((ch) => chapterMap.set(Number(ch.id), { name: ch.chapterName, code: ch.chapterCode }));
+  const chapterMap = new Map<number, { name: string; code?: string; courseId?: number; subjectId?: number }>();
+  chapters.forEach((ch) =>
+    chapterMap.set(Number(ch.id), {
+      name: ch.chapterName,
+      code: ch.chapterCode,
+      courseId: ch.courseId ? Number(ch.courseId) : undefined,
+      subjectId: ch.subjectId ? Number(ch.subjectId) : undefined,
+    })
+  );
+
+  const topicMap = new Map<number, { name: string; code?: string }>();
+  topics.forEach((t) => topicMap.set(Number(t.id), { name: t.topicName, code: t.topicCode }));
 
   let filtered = all;
 
   if (filters?.questionType) {
     filtered = filtered.filter((q) => q.questionType === filters.questionType);
+  }
+
+  if (filters?.courseId) {
+    const cId = Number(filters.courseId);
+    filtered = filtered.filter((q) => {
+      if (q.courseId) return Number(q.courseId) === cId;
+      const ch = chapterMap.get(Number(q.chapterId));
+      return ch && ch.courseId === cId;
+    });
   }
 
   if (filters?.subjectId) {
@@ -339,6 +379,11 @@ export function getAdminQuestions(filters?: {
   if (filters?.chapterId) {
     const chId = Number(filters.chapterId);
     filtered = filtered.filter((q) => Number(q.chapterId) === chId);
+  }
+
+  if (filters?.topicId) {
+    const tId = Number(filters.topicId);
+    filtered = filtered.filter((q) => Number(q.topicId) === tId);
   }
 
   if (filters?.difficulty) {
@@ -352,28 +397,47 @@ export function getAdminQuestions(filters?: {
   if (filters?.search && filters.search.trim()) {
     const q = filters.search.toLowerCase().trim();
     filtered = filtered.filter((item) => {
-      const sInfo = subjectMap.get(Number(item.subjectId));
       const chInfo = chapterMap.get(Number(item.chapterId));
+      const effCourseId = item.courseId || chInfo?.courseId;
+      const cInfo = effCourseId ? courseMap.get(effCourseId) : undefined;
+      const sInfo = subjectMap.get(Number(item.subjectId));
+      const tInfo = item.topicId ? topicMap.get(Number(item.topicId)) : undefined;
+
       return (
         String(item.id).includes(q) ||
         item.questionContent.toLowerCase().includes(q) ||
+        (item.optionA && item.optionA.toLowerCase().includes(q)) ||
+        (item.optionB && item.optionB.toLowerCase().includes(q)) ||
+        (item.optionC && item.optionC.toLowerCase().includes(q)) ||
+        (item.optionD && item.optionD.toLowerCase().includes(q)) ||
         (item.explanation && item.explanation.toLowerCase().includes(q)) ||
         (sInfo && sInfo.name.toLowerCase().includes(q)) ||
-        (chInfo && chInfo.name.toLowerCase().includes(q))
+        (chInfo && chInfo.name.toLowerCase().includes(q)) ||
+        (tInfo && tInfo.name.toLowerCase().includes(q)) ||
+        (cInfo && cInfo.title.toLowerCase().includes(q))
       );
     });
   }
 
   return filtered
     .map((item) => {
-      const sInfo = subjectMap.get(Number(item.subjectId));
       const chInfo = chapterMap.get(Number(item.chapterId));
+      const effCourseId = item.courseId || chInfo?.courseId;
+      const cInfo = effCourseId ? courseMap.get(effCourseId) : undefined;
+      const sInfo = subjectMap.get(Number(item.subjectId));
+      const tInfo = item.topicId ? topicMap.get(Number(item.topicId)) : undefined;
+
       return {
         ...item,
+        courseId: effCourseId,
+        courseTitle: cInfo ? cInfo.title : effCourseId ? `Course #${effCourseId}` : undefined,
+        courseExam: cInfo?.exam,
         subjectName: sInfo ? sInfo.name : `Subject #${item.subjectId}`,
         subjectCode: sInfo?.code,
         chapterName: chInfo ? chInfo.name : `Chapter #${item.chapterId}`,
         chapterCode: chInfo?.code,
+        topicName: tInfo ? tInfo.name : undefined,
+        topicCode: tInfo?.code,
       };
     })
     .sort((a, b) => (Number(a.orderNumber) || a.id) - (Number(b.orderNumber) || b.id));
@@ -390,8 +454,11 @@ export function getQuestionById(id: number): QuestionRecord | null {
 export async function createQuestion(
   data: {
     questionType: QuestionType;
+    courseId?: number;
     subjectId: number;
     chapterId: number;
+    topicId?: number;
+    examId?: number;
     questionContent: string;
     optionA?: string;
     optionB?: string;
@@ -401,6 +468,8 @@ export async function createQuestion(
     rangeFrom?: number | string;
     rangeTo?: number | string;
     tolerance?: number | string;
+    marks?: number;
+    negativeMarks?: number;
     explanation?: string;
     difficulty?: DifficultyLevel;
     orderNumber?: number;
@@ -432,21 +501,43 @@ export async function createQuestion(
         return { success: false, error: 'Question Content is required.' };
       }
 
-      // 1. Verify that Subject exists
+      // 1. Academic Hierarchy: Course validation (if provided)
+      let targetCourseId = data.courseId !== undefined && data.courseId !== null ? Number(data.courseId) : undefined;
+      let course: any = undefined;
+      if (targetCourseId && !isNaN(targetCourseId)) {
+        const courses = readCoursesFromDb();
+        course = courses.find((c) => Number(c.id) === targetCourseId);
+        if (!course) {
+          return { success: false, error: `Course with ID ${targetCourseId} does not exist.` };
+        }
+      }
+
+      // 2. Verify that Subject exists
       const subjects = readSubjectsFromDb();
       const subject = subjects.find((s) => Number(s.id) === subjectId);
       if (!subject) {
         return { success: false, error: `Subject with ID ${subjectId} does not exist.` };
       }
 
-      // 2. Verify that Chapter exists
+      // 3. Verify Subject assignment to Course
+      if (targetCourseId && course) {
+        const isAssigned = isSubjectAssignedToCourse(targetCourseId, subjectId);
+        if (!isAssigned) {
+          return {
+            success: false,
+            error: `Subject '${subject.subjectName}' is not assigned to course '${course.title}'.`,
+          };
+        }
+      }
+
+      // 4. Verify that Chapter exists
       const chapters = readChaptersFromDb();
       const chapter = chapters.find((ch) => Number(ch.id) === chapterId);
       if (!chapter) {
         return { success: false, error: `Chapter with ID ${chapterId} does not exist.` };
       }
 
-      // 3. Verify that Chapter belongs to the selected Subject
+      // 5. Verify that Chapter belongs to the selected Subject
       if (Number(chapter.subjectId) !== subjectId) {
         return {
           success: false,
@@ -454,9 +545,37 @@ export async function createQuestion(
         };
       }
 
+      // 6. Verify Chapter belongs to Course (if Chapter has courseId)
+      if (targetCourseId && course) {
+        if (chapter.courseId && Number(chapter.courseId) !== targetCourseId) {
+          return {
+            success: false,
+            error: `Chapter '${chapter.chapterName}' does not belong to course '${course.title}'.`,
+          };
+        }
+      } else if (chapter.courseId) {
+        targetCourseId = Number(chapter.courseId);
+      }
+
+      // 7. Academic Hierarchy: Topic validation (if provided)
+      let targetTopicId = data.topicId !== undefined && data.topicId !== null ? Number(data.topicId) : undefined;
+      if (targetTopicId && !isNaN(targetTopicId)) {
+        const topics = readTopicsFromDb();
+        const topic = topics.find((t) => Number(t.id) === targetTopicId);
+        if (!topic) {
+          return { success: false, error: `Topic with ID ${targetTopicId} does not exist.` };
+        }
+        if (Number(topic.chapterId) !== chapterId) {
+          return {
+            success: false,
+            error: `Topic '${topic.topicName}' does not belong to chapter '${chapter.chapterName}'.`,
+          };
+        }
+      }
+
       const difficulty: DifficultyLevel = (data.difficulty as DifficultyLevel) || 'Medium';
 
-      // 4. Type-specific validation
+      // 6. Type-specific validation
       if (questionType === 'objective') {
         const optionA = String(data.optionA || '').trim();
         const optionB = String(data.optionB || '').trim();
@@ -498,8 +617,11 @@ export async function createQuestion(
       const newQuestion: QuestionRecord = {
         id: newId,
         questionType,
+        courseId: targetCourseId,
         subjectId,
         chapterId,
+        topicId: targetTopicId,
+        examId: data.examId ? Number(data.examId) : undefined,
         questionContent: sanitizeHtml(questionContent),
         optionA: data.optionA ? sanitizeHtml(data.optionA) : undefined,
         optionB: data.optionB ? sanitizeHtml(data.optionB) : undefined,
@@ -509,6 +631,8 @@ export async function createQuestion(
         rangeFrom: data.rangeFrom !== undefined ? String(data.rangeFrom).trim() : undefined,
         rangeTo: data.rangeTo !== undefined ? String(data.rangeTo).trim() : undefined,
         tolerance: data.tolerance !== undefined ? String(data.tolerance).trim() : undefined,
+        marks: data.marks !== undefined ? Number(data.marks) : 3,
+        negativeMarks: data.negativeMarks !== undefined ? Number(data.negativeMarks) : -1,
         explanation: data.explanation ? sanitizeHtml(data.explanation) : '',
         difficulty,
         orderNumber: Number(data.orderNumber) || (all.filter((q) => q.questionType === questionType).length + 1),
@@ -552,8 +676,10 @@ export async function updateQuestion(
       }
 
       const existing = all[index];
+      const targetCourseId = data.courseId !== undefined ? (data.courseId ? Number(data.courseId) : undefined) : existing.courseId;
       const targetSubjectId = data.subjectId !== undefined ? Number(data.subjectId) : existing.subjectId;
       const targetChapterId = data.chapterId !== undefined ? Number(data.chapterId) : existing.chapterId;
+      const targetTopicId = data.topicId !== undefined ? (data.topicId ? Number(data.topicId) : undefined) : existing.topicId;
       const targetContent = data.questionContent !== undefined ? String(data.questionContent).trim() : existing.questionContent;
 
       if (!targetContent) {
@@ -561,14 +687,46 @@ export async function updateQuestion(
       }
 
       // If chapter changed or subject changed, verify relationship
-      if (targetSubjectId !== existing.subjectId || targetChapterId !== existing.chapterId) {
+      if (targetSubjectId !== existing.subjectId || targetChapterId !== existing.chapterId || targetCourseId !== existing.courseId) {
+        const subjects = readSubjectsFromDb();
+        const sub = subjects.find((s) => Number(s.id) === targetSubjectId);
+        if (!sub) {
+          return { success: false, error: `Subject with ID ${targetSubjectId} does not exist.` };
+        }
+
         const chapters = readChaptersFromDb();
         const ch = chapters.find((c) => Number(c.id) === targetChapterId);
         if (!ch) {
           return { success: false, error: `Chapter with ID ${targetChapterId} does not exist.` };
         }
         if (Number(ch.subjectId) !== targetSubjectId) {
-          return { success: false, error: 'Selected chapter does not belong to the selected subject.' };
+          return { success: false, error: `Selected chapter '${ch.chapterName}' does not belong to subject '${sub.subjectName}'.` };
+        }
+
+        if (targetCourseId) {
+          const courses = readCoursesFromDb();
+          const c = courses.find((course) => Number(course.id) === targetCourseId);
+          if (!c) {
+            return { success: false, error: `Course with ID ${targetCourseId} does not exist.` };
+          }
+          const isAssigned = isSubjectAssignedToCourse(targetCourseId, targetSubjectId);
+          if (!isAssigned) {
+            return { success: false, error: `Subject '${sub.subjectName}' is not assigned to course '${c.title}'.` };
+          }
+          if (ch.courseId && Number(ch.courseId) !== targetCourseId) {
+            return { success: false, error: `Chapter '${ch.chapterName}' does not belong to course '${c.title}'.` };
+          }
+        }
+      }
+
+      if (targetTopicId) {
+        const topics = readTopicsFromDb();
+        const t = topics.find((top) => Number(top.id) === targetTopicId);
+        if (!t) {
+          return { success: false, error: `Topic with ID ${targetTopicId} does not exist.` };
+        }
+        if (Number(t.chapterId) !== targetChapterId) {
+          return { success: false, error: `Topic '${t.topicName}' does not belong to selected chapter.` };
         }
       }
 
@@ -603,8 +761,11 @@ export async function updateQuestion(
 
       const updated: QuestionRecord = {
         ...existing,
+        courseId: targetCourseId,
         subjectId: targetSubjectId,
         chapterId: targetChapterId,
+        topicId: targetTopicId,
+        examId: data.examId !== undefined ? (data.examId ? Number(data.examId) : undefined) : existing.examId,
         questionContent: sanitizeHtml(targetContent),
         optionA: data.optionA !== undefined ? sanitizeHtml(data.optionA) : existing.optionA,
         optionB: data.optionB !== undefined ? sanitizeHtml(data.optionB) : existing.optionB,
@@ -614,6 +775,8 @@ export async function updateQuestion(
         rangeFrom: data.rangeFrom !== undefined ? String(data.rangeFrom).trim() : existing.rangeFrom,
         rangeTo: data.rangeTo !== undefined ? String(data.rangeTo).trim() : existing.rangeTo,
         tolerance: data.tolerance !== undefined ? String(data.tolerance).trim() : existing.tolerance,
+        marks: data.marks !== undefined ? Number(data.marks) : existing.marks,
+        negativeMarks: data.negativeMarks !== undefined ? Number(data.negativeMarks) : existing.negativeMarks,
         explanation: data.explanation !== undefined ? sanitizeHtml(data.explanation) : existing.explanation,
         difficulty: (data.difficulty as DifficultyLevel) || existing.difficulty,
         orderNumber: data.orderNumber !== undefined ? Number(data.orderNumber) : existing.orderNumber,

@@ -38,8 +38,9 @@ export default function Blog() {
 
       const matchesSearch =
         searchQuery === '' ||
-        blog.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        blog.description.toLowerCase().includes(searchQuery.toLowerCase());
+        (blog.title && blog.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        ((blog.excerpt || blog.description || '').toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (Array.isArray(blog.tags) && blog.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase())));
 
       return matchesExam && matchesSearch;
     });
@@ -142,13 +143,11 @@ export default function Blog() {
                     {/* Blog Image */}
                     <Link to={`/blog/${blog.slug}`} className="block relative h-52 overflow-hidden bg-slate-100">
                       <img
-                        src={blog.image}
-                        alt={blog.alttag || blog.title}
+                        src={blog.coverImage || blog.image || '/site/assets/img/blog/blog-1.jpg'}
+                        alt={blog.coverImageAlt || blog.alttag || blog.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         onError={(e) => {
-                          if (blog.onlineImage) {
-                            e.target.src = blog.onlineImage;
-                          }
+                          e.target.src = '/site/assets/img/blog/blog-1.jpg';
                         }}
                       />
                       <span className="absolute top-4 left-4 bg-emerald-500 text-white font-extrabold text-[11px] uppercase tracking-wider px-3 py-1 rounded-full shadow">
@@ -160,7 +159,16 @@ export default function Blog() {
                     <div className="p-6 space-y-3">
                       <div className="flex items-center space-x-2 text-xs text-slate-500 font-semibold">
                         <Calendar className="w-3.5 h-3.5 text-amber-600" />
-                        <span>{blog.date}</span>
+                        <span>
+                          {blog.date ||
+                            (blog.publishedAt
+                              ? new Date(blog.publishedAt).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })
+                              : 'Nov 2026')}
+                        </span>
                       </div>
 
                       <h3 className="text-lg font-extrabold text-slate-900 group-hover:text-amber-600 transition-colors line-clamp-2 leading-snug">
@@ -170,7 +178,7 @@ export default function Blog() {
                       </h3>
 
                       <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
-                        {blog.description}
+                        {blog.excerpt || blog.description}
                       </p>
                     </div>
                   </div>

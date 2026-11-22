@@ -4,6 +4,7 @@ import { checkRateLimit } from '@/lib/auth/rateLimiter';
 import { LearningProgressService } from '@/lib/learning/progress-service';
 import { AcademicHierarchyValidator } from '@/lib/learning/validation';
 import { readVideosFromDb } from '@/lib/db/videos';
+import { getCommerceDb } from '@/lib/commerce/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,7 +109,29 @@ export async function GET(
     );
   }
 
-  // 9. Deliver sanitized Vimeo playback configuration (never exposing server secrets or private keys)
+  // 9. Query existing student progress for this video
+  let videoStatus = 'NOT_STARTED';
+  let completedAt: string | null = null;
+  let lastActivityAt: string | null = null;
+  try {
+    const db = await getCommerceDb();
+    const progRes = await db.query(
+      `SELECT status, last_activity_at, completed_at
+       FROM learning.student_content_progress
+       WHERE user_id = $1 AND content_type = 'VIDEO' AND (content_identifier = $2 OR content_identifier = $3);`,
+      [authenticatedUserId, String(videoId), String(video.vimeoVideoId || '')]
+    );
+    if (progRes.rows.length > 0) {
+      const p = progRes.rows[0];
+      videoStatus = p.status || 'NOT_STARTED';
+      completedAt = p.completed_at ? new Date(p.completed_at).toISOString() : null;
+      lastActivityAt = p.last_activity_at ? new Date(p.last_activity_at).toISOString() : null;
+    }
+  } catch (err) {
+    // Non-fatal fallback
+  }
+
+  // 10. Deliver sanitized playback configuration (never exposing server secrets or private keys)
   return NextResponse.json({
     success: true,
     data: {
@@ -120,10 +143,14 @@ export async function GET(
       durationMinutes: Number(video.durationMinutes || 0),
       isFreePreview: Boolean(video.isFreePreview),
       displayOrder: Number(video.displayOrder || 1),
+      status: videoStatus,
+      completedAt,
+      lastActivityAt,
       playbackConfig: {
         provider: (video.provider ? video.provider.toLowerCase() : 'vimeo'),
         vimeoVideoId: video.vimeoVideoId,
         providerVideoId: video.providerVideoId || video.vimeoVideoId,
+        videoUrl: video.videoUrl,
         responsive: true,
         speed: true,
         color: '3F328A',

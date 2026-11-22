@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAttemptById } from '@/lib/db/test-attempts';
+import { getAttemptById, checkAndAutoFinalizeAttempt } from '@/lib/db/test-attempts';
 import { getQuestionsForTestPaper } from '@/lib/db/test-series';
 import { requireAuth } from '@/lib/auth/serverAuth';
 
@@ -55,8 +55,14 @@ export async function GET(
     const now = Date.now();
     const expiryMs = new Date(attempt.expiresAt).getTime();
     if (now >= expiryMs) {
+      await checkAndAutoFinalizeAttempt(attemptId, auth.user.id);
       return NextResponse.json(
-        { success: false, error: 'Test attempt has expired. Question access is locked.' },
+        {
+          success: false,
+          error: 'Test attempt has expired. Question access is locked.',
+          isExpired: true,
+          destination: `/student/tests/results/${attempt.id}`,
+        },
         { status: 403 }
       );
     }

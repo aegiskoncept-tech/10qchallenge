@@ -176,6 +176,9 @@ export interface SanitizedClassroomVideo {
 export interface SanitizedClassroomDocument {
   id: number;
   title: string;
+  category?: string;
+  allowDownload?: boolean;
+  isFreePreview?: boolean;
   fileType: string;
   fileSizeBytes?: string;
   pageCount?: number;

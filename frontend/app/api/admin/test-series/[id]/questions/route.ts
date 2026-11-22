@@ -9,14 +9,18 @@ import {
 import { readQuestionsFromDb, QuestionRecord } from '@/lib/db/questions';
 import { readSubjectsFromDb } from '@/lib/db/subjects';
 import { readChaptersFromDb } from '@/lib/db/chapters';
+import { readCoursesFromDb } from '@/lib/db/courses';
+import { readTopicsFromDb } from '@/lib/db/topics';
 import { requireAdmin } from '@/lib/auth/serverAuth';
 import { AuthDb } from '@/lib/auth/database';
 
 export const dynamic = 'force-dynamic';
 
 interface EnrichedQuestion extends QuestionRecord {
+  courseName?: string;
   subjectName: string;
   chapterName: string;
+  topicName?: string;
 }
 
 export async function GET(
@@ -38,21 +42,31 @@ export async function GET(
   }
 
   const { searchParams } = new URL(req.url);
+  const courseIdParam = searchParams.get('courseId');
   const subjectIdParam = searchParams.get('subjectId');
   const chapterIdParam = searchParams.get('chapterId');
+  const topicIdParam = searchParams.get('topicId');
   const typeParam = searchParams.get('type');
   const difficultyParam = searchParams.get('difficulty');
   const searchParam = searchParams.get('search');
 
   const allQuestions = readQuestionsFromDb();
+  const allCourses = readCoursesFromDb().filter((c) => c.isActive !== false);
   const allSubjects = readSubjectsFromDb().filter((s) => s.isActive !== false);
   const allChapters = readChaptersFromDb().filter((c) => c.isActive !== false);
+  const allTopics = readTopicsFromDb().filter((t) => t.isActive !== false);
+
+  const courseMap = new Map<number, string>();
+  allCourses.forEach((c) => courseMap.set(Number(c.id), c.title));
 
   const subjectMap = new Map<number, string>();
   allSubjects.forEach((s) => subjectMap.set(Number(s.id), s.subjectName));
 
   const chapterMap = new Map<number, string>();
   allChapters.forEach((c) => chapterMap.set(Number(c.id), c.chapterName));
+
+  const topicMap = new Map<number, string>();
+  allTopics.forEach((t) => topicMap.set(Number(t.id), t.topicName));
 
   // Map for all questions
   const questionMap = new Map<number, QuestionRecord>();
@@ -69,8 +83,10 @@ export async function GET(
       linkedIdSet.add(Number(qId));
       linkedQuestions.push({
         ...q,
+        courseName: q.courseId ? courseMap.get(Number(q.courseId)) : undefined,
         subjectName: subjectMap.get(Number(q.subjectId)) || `Subject #${q.subjectId}`,
         chapterName: chapterMap.get(Number(q.chapterId)) || `Chapter #${q.chapterId}`,
+        topicName: q.topicId ? topicMap.get(Number(q.topicId)) : undefined,
       });
     }
   }
@@ -80,25 +96,45 @@ export async function GET(
     .filter((q) => q.isActive !== false)
     .map((q) => ({
       ...q,
+      courseName: q.courseId ? courseMap.get(Number(q.courseId)) : undefined,
       subjectName: subjectMap.get(Number(q.subjectId)) || `Subject #${q.subjectId}`,
       chapterName: chapterMap.get(Number(q.chapterId)) || `Chapter #${q.chapterId}`,
+      topicName: q.topicId ? topicMap.get(Number(q.topicId)) : undefined,
     }));
 
-  if (subjectIdParam) {
+  if (courseIdParam && courseIdParam !== 'ALL') {
+    const cId = Number(courseIdParam);
+    if (!isNaN(cId)) {
+      availableQuestions = availableQuestions.filter((q) => Number(q.courseId) === cId);
+    }
+  }
+
+  if (subjectIdParam && subjectIdParam !== 'ALL') {
     const sId = Number(subjectIdParam);
-    availableQuestions = availableQuestions.filter((q) => Number(q.subjectId) === sId);
+    if (!isNaN(sId)) {
+      availableQuestions = availableQuestions.filter((q) => Number(q.subjectId) === sId);
+    }
   }
 
-  if (chapterIdParam) {
+  if (chapterIdParam && chapterIdParam !== 'ALL') {
     const chId = Number(chapterIdParam);
-    availableQuestions = availableQuestions.filter((q) => Number(q.chapterId) === chId);
+    if (!isNaN(chId)) {
+      availableQuestions = availableQuestions.filter((q) => Number(q.chapterId) === chId);
+    }
   }
 
-  if (typeParam && (typeParam === 'objective' || typeParam === 'numerical')) {
+  if (topicIdParam && topicIdParam !== 'ALL') {
+    const tId = Number(topicIdParam);
+    if (!isNaN(tId)) {
+      availableQuestions = availableQuestions.filter((q) => Number(q.topicId) === tId);
+    }
+  }
+
+  if (typeParam && typeParam !== 'ALL' && (typeParam === 'objective' || typeParam === 'numerical')) {
     availableQuestions = availableQuestions.filter((q) => q.questionType === typeParam);
   }
 
-  if (difficultyParam) {
+  if (difficultyParam && difficultyParam !== 'ALL') {
     availableQuestions = availableQuestions.filter(
       (q) => q.difficulty?.toLowerCase() === difficultyParam.toLowerCase()
     );
@@ -135,11 +171,20 @@ export async function GET(
         status: paper.status,
         version: paper.version || 1,
         markingScheme: paper.markingScheme || { positiveMarks: 3, negativeMarks: 1 },
+        sections: paper.sections || [],
+        instructions: paper.instructions,
+        startDate: paper.startDate,
+        endDate: paper.endDate,
         createdAt: paper.createdAt,
         updatedAt: paper.updatedAt,
       },
       linkedQuestions,
       availableQuestions,
+      courses: allCourses.map((c) => ({
+        id: c.id,
+        title: c.title,
+        slug: c.slug,
+      })),
       subjects: allSubjects.map((s) => ({
         id: s.id,
         subjectName: s.subjectName,
@@ -149,6 +194,12 @@ export async function GET(
         id: c.id,
         chapterName: c.chapterName,
         subjectId: c.subjectId,
+      })),
+      topics: allTopics.map((t) => ({
+        id: t.id,
+        topicName: t.topicName,
+        chapterId: t.chapterId,
+        subjectId: t.subjectId,
       })),
       metrics,
     },
@@ -174,7 +225,7 @@ export async function PUT(
   }
 
   const body = await req.json();
-  const { questionIds, markingScheme, expectedVersion } = body;
+  const { questionIds, markingScheme, expectedVersion, sections } = body;
 
   // Concurrency Conflict Check
   if (expectedVersion !== undefined && paper.version !== undefined && expectedVersion !== paper.version) {
@@ -224,6 +275,7 @@ export async function PUT(
   const adminUser = `${auth.user.fullName} (${auth.user.email})`;
   const updateData: Partial<TestSeriesRecord> = {
     questionIds: cleanIds,
+    ...(Array.isArray(sections) ? { sections } : {}),
   };
 
   if (markingScheme && typeof markingScheme === 'object') {

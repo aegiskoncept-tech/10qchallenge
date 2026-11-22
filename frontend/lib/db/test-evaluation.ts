@@ -169,20 +169,35 @@ export function evaluateTestAttempt(
   let unattemptedCount = 0;
   let totalPositiveMarks = 0;
   let totalNegativeMarks = 0;
+  let totalMaxMarks = 0;
 
   const responses = attempt.responses || {};
+  const sectionOverrides = (attempt.markingScheme as any)?.sectionOverrides;
 
   for (const q of paperQuestions) {
     const resp = responses[String(q.id)];
     let evalStatus: QuestionEvaluationStatus = 'UNATTEMPTED';
     let marksAwarded = 0;
 
+    let activeMarking = markingScheme;
+    if (sectionOverrides && typeof sectionOverrides === 'object') {
+      const sKey = String(q.subjectId);
+      if (sectionOverrides[sKey]) {
+        activeMarking = {
+          positiveMarks: Number(sectionOverrides[sKey].positiveMarks) || markingScheme.positiveMarks,
+          negativeMarks: Number(sectionOverrides[sKey].negativeMarks) ?? markingScheme.negativeMarks,
+        };
+      }
+    }
+
+    totalMaxMarks += activeMarking.positiveMarks;
+
     if (q.questionType === 'numerical') {
-      const result = evaluateNumericalQuestion(q, resp, markingScheme);
+      const result = evaluateNumericalQuestion(q, resp, activeMarking);
       evalStatus = result.status;
       marksAwarded = result.marksAwarded;
     } else {
-      const result = evaluateObjectiveQuestion(q, resp, markingScheme);
+      const result = evaluateObjectiveQuestion(q, resp, activeMarking);
       evalStatus = result.status;
       marksAwarded = result.marksAwarded;
     }
@@ -213,7 +228,7 @@ export function evaluateTestAttempt(
   const totalQuestions = paperQuestions.length;
   const attemptedQuestions = correctCount + incorrectCount;
   const finalScore = totalPositiveMarks - totalNegativeMarks;
-  const maximumMarks = totalQuestions * markingScheme.positiveMarks;
+  const maximumMarks = totalMaxMarks > 0 ? totalMaxMarks : (totalQuestions * markingScheme.positiveMarks);
 
   const accuracy =
     attemptedQuestions > 0

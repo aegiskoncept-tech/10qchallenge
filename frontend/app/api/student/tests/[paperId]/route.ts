@@ -44,6 +44,22 @@ export async function GET(
       totalMarks: test.totalMarks,
       price: test.price,
       status: test.status,
+      markingScheme: test.markingScheme
+        ? {
+            positiveMarks: test.markingScheme.positiveMarks,
+            negativeMarks: test.markingScheme.negativeMarks,
+          }
+        : undefined,
+      sections: test.sections
+        ? test.sections.map((s) => ({
+            name: s.name,
+            questionCount: s.questionCount,
+            totalMarks: s.totalMarks,
+          }))
+        : undefined,
+      instructions: test.instructions,
+      startDate: test.startDate,
+      endDate: test.endDate,
       createdAt: test.createdAt,
     };
 

@@ -43,5 +43,28 @@
     "createdAt": "2026-11-01T00:00:00.000Z",
     "updatedAt": "2026-11-01T00:00:00.000Z",
     "createdBy": "System"
+  },
+  {
+    "id": 4,
+    "title": "Journey A: Circular Motion Derivations",
+    "provider": "VIMEO",
+    "providerVideoId": "824804300",
+    "vimeoVideoId": "824804300",
+    "courseId": 1,
+    "courseTitle": "BITSAT 2026 Master Crash Course (Updated Batch)",
+    "subjectId": 1,
+    "subject": "Physics",
+    "chapterId": 1,
+    "chapter": "Mechanics & Kinematics",
+    "topicId": 2,
+    "topicName": "1D & 2D Motion under Gravity",
+    "description": "",
+    "durationMinutes": 40,
+    "isFreePreview": false,
+    "status": "Published",
+    "displayOrder": 5,
+    "createdAt": "2026-11-21T23:59:07.218Z",
+    "updatedAt": "2026-11-21T23:59:07.218Z",
+    "createdBy": "Lead Administrator (admin@10qchallenge.in)"
   }
 ]

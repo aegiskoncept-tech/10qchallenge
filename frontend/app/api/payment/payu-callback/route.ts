@@ -52,16 +52,16 @@ export async function POST(req: NextRequest) {
     const verification = await PayUService.verifyCallbackEndToEnd(payload, expectedOrder, expectedAttempt);
 
     if (!verification.isValid) {
-      console.error('[PayU Callback Authoritative Verification FAILED]:', verification);
+      console.error('[PayU Callback Authoritative Verification FAILED]:', PayUService.sanitizeForLog(verification));
       const db = await getCommerceDb();
       await db.query(
         `INSERT INTO commerce.payment_anomalies (order_id, payment_attempt_id, anomaly_type, severity, raw_payload)
          VALUES ($1, $2, $3, 'CRITICAL', $4);`,
-        [order.id, attempt.id, verification.errorCode || 'VERIFICATION_FAILED', JSON.stringify(payload)]
+        [order.id, attempt.id, verification.errorCode || 'VERIFICATION_FAILED', JSON.stringify(PayUService.sanitizeForLog(payload))]
       );
 
       // Update attempt status to FAILED
-      await OrderService.updateAttemptStatus(attempt.id, 'FAILED', payload);
+      await OrderService.updateAttemptStatus(attempt.id, 'FAILED', PayUService.sanitizeForLog(payload));
 
       return NextResponse.redirect(
         `${appUrl}/payment-failure?reason=${verification.errorCode || 'VERIFICATION_FAILED'}&orderId=${order.orderNumber}`,

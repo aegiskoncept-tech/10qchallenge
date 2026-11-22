@@ -6,8 +6,8 @@
     "targetYear": 2026,
     "description": "Exact BITSAT pattern test with 130 questions (+12 bonus questions) and instant percentile report.",
     "durationMinutes": 180,
-    "totalQuestions": 130,
-    "totalMarks": 390,
+    "totalQuestions": 5,
+    "totalMarks": 15,
     "price": 499,
     "status": "Published",
     "questionIds": [
@@ -18,9 +18,11 @@
       5
     ],
     "createdAt": "2026-11-01T00:00:00.000Z",
-    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-22T11:35:42.254Z",
     "createdBy": "System",
-    "version": 1
+    "version": 1,
+    "versions": [],
+    "updatedBy": "Lead Administrator (admin@10qchallenge.in)"
   },
   {
     "id": 2,
@@ -41,9 +43,9 @@
       5
     ],
     "createdAt": "2026-11-01T00:00:00.000Z",
-    "updatedAt": "2026-11-19T01:57:50.580Z",
+    "updatedAt": "2026-11-22T11:32:17.942Z",
     "createdBy": "System",
-    "version": 1,
+    "version": 11,
     "markingScheme": {
       "positiveMarks": 3,
       "negativeMarks": 1,
@@ -97,5 +99,109 @@
     "updatedAt": "2026-11-01T00:00:00.000Z",
     "createdBy": "System",
     "version": 1
+  },
+  {
+    "id": 6,
+    "title": "Short Expiry Mock Test",
+    "examTag": "BITSAT",
+    "targetYear": 2026,
+    "description": "",
+    "durationMinutes": 1,
+    "totalQuestions": 1,
+    "totalMarks": 3,
+    "price": 0,
+    "status": "Published",
+    "version": 1,
+    "questionIds": [
+      1
+    ],
+    "markingScheme": {
+      "positiveMarks": 3,
+      "negativeMarks": 1
+    },
+    "sections": [],
+    "versions": [],
+    "createdAt": "2026-11-19T17:29:08.514Z",
+    "updatedAt": "2026-11-19T17:29:08.514Z",
+    "createdBy": "Lead Administrator (admin@10qchallenge.in)"
+  },
+  {
+    "id": 8,
+    "title": "Short Expiry Mock Test",
+    "examTag": "BITSAT",
+    "targetYear": 2026,
+    "description": "",
+    "durationMinutes": 1,
+    "totalQuestions": 1,
+    "totalMarks": 3,
+    "price": 0,
+    "status": "Published",
+    "version": 1,
+    "questionIds": [
+      1
+    ],
+    "markingScheme": {
+      "positiveMarks": 3,
+      "negativeMarks": 1
+    },
+    "sections": [],
+    "versions": [],
+    "createdAt": "2026-11-19T18:02:27.753Z",
+    "updatedAt": "2026-11-19T18:02:27.753Z",
+    "createdBy": "Lead Administrator (admin@10qchallenge.in)"
+  },
+  {
+    "id": 10,
+    "title": "Short Expiry Mock Test",
+    "examTag": "BITSAT",
+    "targetYear": 2026,
+    "description": "",
+    "durationMinutes": 1,
+    "totalQuestions": 1,
+    "totalMarks": 3,
+    "price": 0,
+    "status": "Published",
+    "version": 1,
+    "questionIds": [
+      1
+    ],
+    "markingScheme": {
+      "positiveMarks": 3,
+      "negativeMarks": 1
+    },
+    "sections": [],
+    "versions": [],
+    "createdAt": "2026-11-19T18:22:53.315Z",
+    "updatedAt": "2026-11-19T18:22:53.315Z",
+    "createdBy": "Lead Administrator (admin@10qchallenge.in)"
+  },
+  {
+    "id": 11,
+    "title": "Journey CBT Mock Test 2026",
+    "examTag": "BITSAT",
+    "targetYear": 2026,
+    "description": "Updated description: Includes live percentiles and topic-wise breakdown.",
+    "durationMinutes": 190,
+    "totalQuestions": 0,
+    "totalMarks": 0,
+    "price": 549,
+    "status": "Draft",
+    "version": 1,
+    "questionIds": [],
+    "markingScheme": {
+      "positiveMarks": 3,
+      "negativeMarks": 1
+    },
+    "sections": [],
+    "instructions": [
+      "The test contains Physics, Chemistry, and Mathematics questions.",
+      "Positive marks: +3, Negative marks: -1.",
+      "Do not refresh or navigate away from the browser during CBT simulation."
+    ],
+    "versions": [],
+    "createdAt": "2026-11-21T23:00:15.748Z",
+    "updatedAt": "2026-11-21T23:00:15.780Z",
+    "createdBy": "Lead Administrator (admin@10qchallenge.in)",
+    "updatedBy": "Lead Administrator (admin@10qchallenge.in)"
   }
 ]

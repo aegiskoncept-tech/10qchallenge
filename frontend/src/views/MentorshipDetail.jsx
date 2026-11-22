@@ -10,6 +10,7 @@ import {
 import { mentorshipData, getMentorshipBySlug } from '../data/mentorship';
 import { coursesData } from '../data/courses';
 import VideoModal from '../components/VideoModal';
+import { serializeJsonLd } from '@/lib/content/json-ld';
 
 export default function MentorshipDetail({ onAddToCart = () => {} }) {
   const { slug } = useParams();
@@ -125,7 +126,7 @@ export default function MentorshipDetail({ onAddToCart = () => {} }) {
       {/* SEO JSON-LD Structured Data */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdData) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLdData) }}
       />
 
       {/* 1. Mentorship Header / Hero Section */}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCourseBySlugOrId } from '@/lib/db/courses';
+import { getCourseWithDynamicCurriculum } from '@/lib/db/curriculum';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       return NextResponse.json({ success: false, error: 'Slug parameter is required.' }, { status: 400 });
     }
 
-    const course = getCourseBySlugOrId(slug, false);
+    const course = getCourseWithDynamicCurriculum(slug, false) || getCourseBySlugOrId(slug, false);
 
     if (!course) {
       return NextResponse.json(

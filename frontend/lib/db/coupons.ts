@@ -298,6 +298,42 @@ export async function createCoupon(
     all.push(newCoupon);
     writeCouponsToDb(all);
 
+    try {
+      const { getCommerceDb } = await import('@/lib/commerce/db');
+      const db = await getCommerceDb();
+      await db.query(
+        `INSERT INTO commerce.coupons (
+          code, description, discount_type, discount_value, minimum_order_amount,
+          maximum_discount_amount, total_redemption_limit, per_student_redemption_limit,
+          applicable_courses, is_active
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (code) DO UPDATE SET
+          description = EXCLUDED.description,
+          discount_type = EXCLUDED.discount_type,
+          discount_value = EXCLUDED.discount_value,
+          minimum_order_amount = EXCLUDED.minimum_order_amount,
+          maximum_discount_amount = EXCLUDED.maximum_discount_amount,
+          total_redemption_limit = EXCLUDED.total_redemption_limit,
+          per_student_redemption_limit = EXCLUDED.per_student_redemption_limit,
+          is_active = EXCLUDED.is_active,
+          updated_at = NOW();`,
+        [
+          newCoupon.code,
+          newCoupon.description || null,
+          newCoupon.discountType,
+          newCoupon.discountValue,
+          newCoupon.minOrderAmount || 0,
+          newCoupon.maxDiscount || null,
+          newCoupon.usageLimit || null,
+          1,
+          '[]',
+          newCoupon.isActive
+        ]
+      );
+    } catch (e) {
+      console.warn('[Sync to Postgres warning]', e);
+    }
+
     return { success: true, coupon: newCoupon };
   });
 }
@@ -350,6 +386,41 @@ export async function updateCoupon(
     all[index] = updated;
     writeCouponsToDb(all);
 
+    try {
+      const { getCommerceDb } = await import('@/lib/commerce/db');
+      const db = await getCommerceDb();
+      await db.query(
+        `INSERT INTO commerce.coupons (
+          code, description, discount_type, discount_value, minimum_order_amount,
+          maximum_discount_amount, total_redemption_limit, per_student_redemption_limit,
+          applicable_courses, is_active
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (code) DO UPDATE SET
+          description = EXCLUDED.description,
+          discount_type = EXCLUDED.discount_type,
+          discount_value = EXCLUDED.discount_value,
+          minimum_order_amount = EXCLUDED.minimum_order_amount,
+          maximum_discount_amount = EXCLUDED.maximum_discount_amount,
+          total_redemption_limit = EXCLUDED.total_redemption_limit,
+          is_active = EXCLUDED.is_active,
+          updated_at = NOW();`,
+        [
+          updated.code,
+          updated.description || null,
+          updated.discountType,
+          updated.discountValue,
+          updated.minOrderAmount || 0,
+          updated.maxDiscount || null,
+          updated.usageLimit || null,
+          1,
+          '[]',
+          updated.isActive
+        ]
+      );
+    } catch (e) {
+      console.warn('[Sync to Postgres warning]', e);
+    }
+
     return { success: true, coupon: updated };
   });
 }
@@ -367,6 +438,14 @@ export async function deleteCoupon(
 
     const deleted = all.splice(index, 1)[0];
     writeCouponsToDb(all);
+
+    try {
+      const { getCommerceDb } = await import('@/lib/commerce/db');
+      const db = await getCommerceDb();
+      await db.query(`UPDATE commerce.coupons SET is_active = FALSE, updated_at = NOW() WHERE UPPER(code) = $1;`, [deleted.code.toUpperCase()]);
+    } catch (e) {
+      console.warn('[Sync to Postgres warning]', e);
+    }
 
     return { success: true, coupon: deleted };
   });

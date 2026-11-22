@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { coursesData, getCourseBySlug, getStoredCourses } from '../data/courses';
 import VideoModal from '../components/VideoModal';
+import { serializeJsonLd } from '@/lib/content/json-ld';
 
 export default function CourseDetail({ onAddToCart = () => {} }) {
   const params = useParams();
@@ -73,8 +74,22 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
 
     const handleUpdate = () => {
       const currentSlug = getParamSlug();
-      const updated = getCourseBySlug(currentSlug);
-      if (updated) setCourse(updated);
+      if (currentSlug) {
+        fetch(`/api/courses/${encodeURIComponent(currentSlug)}`, { cache: 'no-store' })
+          .then((res) => res.json())
+          .then((json) => {
+            if (json.success && json.data) {
+              setCourse(json.data);
+            }
+          })
+          .catch(() => {
+            const updated = getCourseBySlug(currentSlug);
+            if (updated) setCourse(updated);
+          });
+      } else {
+        const updated = getCourseBySlug(currentSlug);
+        if (updated) setCourse(updated);
+      }
     };
 
     window.addEventListener('10q_courses_updated', handleUpdate);
@@ -214,7 +229,7 @@ export default function CourseDetail({ onAddToCart = () => {} }) {
       {/* SEO JSON-LD Structured Data */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdData) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLdData) }}
       />
 
       {/* 1. Course Header / Hero Section */}

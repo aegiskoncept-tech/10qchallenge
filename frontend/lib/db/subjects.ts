@@ -94,6 +94,17 @@ export const CANONICAL_DEFAULT_SUBJECTS: SubjectRecord[] = [
   },
 ];
 
+// Canonical default course-subject mappings matching the curriculum structure
+export const CANONICAL_DEFAULT_COURSE_SUBJECTS: CourseSubjectRecord[] = [
+  { id: 1, courseId: 1, subjectId: 1, displayOrder: 1, createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z' },
+  { id: 2, courseId: 1, subjectId: 2, displayOrder: 2, createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z' },
+  { id: 3, courseId: 1, subjectId: 3, displayOrder: 3, createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z' },
+  { id: 4, courseId: 1, subjectId: 4, displayOrder: 4, createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z' },
+  { id: 5, courseId: 2, subjectId: 1, displayOrder: 1, createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z' },
+  { id: 6, courseId: 2, subjectId: 2, displayOrder: 2, createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z' },
+  { id: 7, courseId: 2, subjectId: 3, displayOrder: 3, createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z' },
+];
+
 // Helper to determine persistent storage file paths for subjects
 function getSubjectDataPaths(): string[] {
   if (process.env.DATA_STORE_DIR) {
@@ -345,7 +356,9 @@ export function readCourseSubjectsFromDb(): CourseSubjectRecord[] {
     return candidateWithData.data;
   }
 
-  return [];
+  // Safe initialize with canonical default course-subjects
+  writeCourseSubjectsToDb(CANONICAL_DEFAULT_COURSE_SUBJECTS);
+  return CANONICAL_DEFAULT_COURSE_SUBJECTS;
 }
 
 // Write Course-Subject relationships atomically across all valid data paths
@@ -432,6 +445,23 @@ export function getSubjectsForCourse(courseId: number): SubjectRecord[] {
     .sort((a, b) => (Number(a.displayOrder) || a.id) - (Number(b.displayOrder) || b.id))
     .map((r) => subjectMap.get(Number(r.subjectId)))
     .filter((s): s is SubjectRecord => Boolean(s));
+}
+
+// Validate whether a subject is assigned to a course
+export function isSubjectAssignedToCourse(courseId: number, subjectId: number): boolean {
+  const relationships = readCourseSubjectsFromDb();
+  const isDirect = relationships.some(
+    (r) => Number(r.courseId) === Number(courseId) && Number(r.subjectId) === Number(subjectId)
+  );
+  if (isDirect) return true;
+
+  const courses = readCoursesFromDb();
+  const targetCourse = courses.find((c) => Number(c.id) === Number(courseId));
+  if (targetCourse && Array.isArray(targetCourse.subjectIds)) {
+    return targetCourse.subjectIds.map(Number).includes(Number(subjectId));
+  }
+
+  return false;
 }
 
 // Public API Query: active subjects
@@ -667,6 +697,34 @@ export async function deleteSubject(
           error: `Cannot delete subject '${target.subjectName}'. It is currently assigned to ${assignedCourses.length} course(s): ${courseNames}. Please remove the subject from those courses or deactivate the subject instead.`,
           associatedCoursesCount: assignedCourses.length,
         };
+      }
+
+      // Referential integrity check: verify if any chapters reference this subject
+      try {
+        const cwd = process.cwd();
+        const chCandidates = [
+          path.join(cwd, 'data', 'chapters.json'),
+          path.join(cwd, 'frontend', 'data', 'chapters.json'),
+        ];
+        for (const chPath of chCandidates) {
+          if (fs.existsSync(chPath)) {
+            const raw = fs.readFileSync(chPath, 'utf-8');
+            if (raw.trim()) {
+              const chapters = JSON.parse(raw);
+              if (Array.isArray(chapters)) {
+                const depCh = chapters.filter((c: any) => Number(c.subjectId) === Number(target.id));
+                if (depCh.length > 0) {
+                  return {
+                    success: false,
+                    error: `Cannot delete subject '${target.subjectName}'. It is referenced by ${depCh.length} chapter(s) (e.g. '${depCh[0].chapterName}'). Please remove or reassign those chapters first or deactivate the subject.`,
+                  };
+                }
+              }
+            }
+          }
+        }
+      } catch (chErr) {
+        console.error('[deleteSubject Chapter Dependency Check Error]', chErr);
       }
 
       const filtered = all.filter((s) => Number(s.id) !== Number(id));

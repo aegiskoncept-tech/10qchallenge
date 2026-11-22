@@ -1,1 +1,58 @@
-[]
+[
+  {
+    "id": 1,
+    "courseId": 1,
+    "subjectId": 1,
+    "displayOrder": 1,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z"
+  },
+  {
+    "id": 2,
+    "courseId": 1,
+    "subjectId": 2,
+    "displayOrder": 2,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z"
+  },
+  {
+    "id": 3,
+    "courseId": 1,
+    "subjectId": 3,
+    "displayOrder": 3,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z"
+  },
+  {
+    "id": 4,
+    "courseId": 1,
+    "subjectId": 4,
+    "displayOrder": 4,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z"
+  },
+  {
+    "id": 5,
+    "courseId": 2,
+    "subjectId": 1,
+    "displayOrder": 1,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z"
+  },
+  {
+    "id": 6,
+    "courseId": 2,
+    "subjectId": 2,
+    "displayOrder": 2,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z"
+  },
+  {
+    "id": 7,
+    "courseId": 2,
+    "subjectId": 3,
+    "displayOrder": 3,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z"
+  }
+]

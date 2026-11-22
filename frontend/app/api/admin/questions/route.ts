@@ -13,20 +13,26 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const typeParam = searchParams.get('type') as QuestionType | null;
+    const courseIdParam = searchParams.get('courseId');
     const subjectIdParam = searchParams.get('subjectId');
     const chapterIdParam = searchParams.get('chapterId');
+    const topicIdParam = searchParams.get('topicId');
     const difficultyParam = searchParams.get('difficulty') as DifficultyLevel | null;
     const search = searchParams.get('search') || undefined;
     const statusParam = searchParams.get('isActive');
 
-    const subjectId = subjectIdParam ? Number(subjectIdParam) : undefined;
-    const chapterId = chapterIdParam ? Number(chapterIdParam) : undefined;
+    const courseId = courseIdParam && courseIdParam !== 'ALL' ? Number(courseIdParam) : undefined;
+    const subjectId = subjectIdParam && subjectIdParam !== 'ALL' ? Number(subjectIdParam) : undefined;
+    const chapterId = chapterIdParam && chapterIdParam !== 'ALL' ? Number(chapterIdParam) : undefined;
+    const topicId = topicIdParam && topicIdParam !== 'ALL' ? Number(topicIdParam) : undefined;
     const isActive = statusParam !== null ? statusParam === 'true' : undefined;
 
     const questions = getAdminQuestions({
       questionType: typeParam || undefined,
+      courseId,
       subjectId,
       chapterId,
+      topicId,
       difficulty: difficultyParam || undefined,
       search,
       isActive,

@@ -1,7 +1,11 @@
-'use client';
 import React from 'react';
-import BlogDetail from '@/src/views/BlogDetail';
+import PublicBlogDetail from '@/components/blog/PublicBlogDetail';
 
-export default function BlogDetailAliasPage() {
-  return <BlogDetail />;
+interface PageProps {
+  params: Promise<{ slug: string }>;
+}
+
+export default async function BlogDetailAliasPage({ params }: PageProps) {
+  const { slug } = await params;
+  return <PublicBlogDetail slug={slug} />;
 }

@@ -23,6 +23,15 @@ export interface TestPaperVersionSnapshot {
   questionSnapshots?: Record<string, any>;
 }
 
+export interface TestSeriesSectionConfig {
+  id?: string;
+  name: string;
+  subjectId?: number;
+  questionCount?: number;
+  totalMarks?: number;
+  questionIds?: number[];
+}
+
 export interface TestSeriesRecord {
   id: number;
   title: string;
@@ -37,6 +46,10 @@ export interface TestSeriesRecord {
   version: number;
   questionIds?: number[];
   markingScheme?: MarkingSchemeConfig;
+  sections?: TestSeriesSectionConfig[];
+  instructions?: string[] | string;
+  startDate?: string;
+  endDate?: string;
   versions?: TestPaperVersionSnapshot[];
   createdAt: string;
   updatedAt: string;
@@ -602,6 +615,10 @@ export async function createTestSeries(
           positiveMarks: data.examTag?.toLowerCase().includes('bitsat') ? 3 : 4,
           negativeMarks: 1,
         },
+        sections: data.sections || [],
+        instructions: data.instructions,
+        startDate: data.startDate,
+        endDate: data.endDate,
         versions: [],
         createdAt: now,
         updatedAt: now,
@@ -679,27 +696,29 @@ export async function updateTestSeries(
         data.markingScheme !== undefined &&
         JSON.stringify(data.markingScheme) !== JSON.stringify(existing.markingScheme);
 
-      if ((questionIdsChanged || markingSchemeChanged) && linkedAttempts.length > 0) {
-        const snapshots = captureQuestionSnapshotsForPaper(
-          existing.questionIds || [],
-          existing.markingScheme,
-          existing.examTag
-        );
-        const historicalSnapshot: TestPaperVersionSnapshot = {
-          version: existing.version || 1,
-          publishedAt: existing.updatedAt || existing.createdAt,
-          title: existing.title,
-          examTag: existing.examTag,
-          durationMinutes: existing.durationMinutes,
-          totalQuestions: existing.totalQuestions,
-          totalMarks: existing.totalMarks,
-          questionIds: [...(existing.questionIds || [])],
-          markingScheme: existing.markingScheme,
-          questionSnapshots: snapshots,
-        };
-        effectiveVersions = [...effectiveVersions, historicalSnapshot];
+      if (questionIdsChanged || markingSchemeChanged) {
+        if (linkedAttempts.length > 0) {
+          const snapshots = captureQuestionSnapshotsForPaper(
+            existing.questionIds || [],
+            existing.markingScheme,
+            existing.examTag
+          );
+          const historicalSnapshot: TestPaperVersionSnapshot = {
+            version: existing.version || 1,
+            publishedAt: existing.updatedAt || existing.createdAt,
+            title: existing.title,
+            examTag: existing.examTag,
+            durationMinutes: existing.durationMinutes,
+            totalQuestions: existing.totalQuestions,
+            totalMarks: existing.totalMarks,
+            questionIds: [...(existing.questionIds || [])],
+            markingScheme: existing.markingScheme,
+            questionSnapshots: snapshots,
+          };
+          effectiveVersions = [...effectiveVersions, historicalSnapshot];
+          saveCompatibilitySnapshot(Number(id), existing.version || 1, snapshots);
+        }
         effectiveVersion = (existing.version || 1) + 1;
-        saveCompatibilitySnapshot(Number(id), existing.version || 1, snapshots);
       }
 
       // Recalculate metrics

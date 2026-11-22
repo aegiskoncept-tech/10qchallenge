@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from '@/src/compat/router';
 import { Star, Clock, BookOpen, ArrowRight, ShieldCheck, Flame } from 'lucide-react';
-import { coursesData, getStoredCourses } from '../data/courses';
+import { coursesData, getStoredCourses, saveStoredCourses } from '../data/courses';
 
 export default function FeaturedCoursesSection({ limit = 6 }) {
   const [courses, setCourses] = useState(() => {

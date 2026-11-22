@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { SecurePdfViewer } from '@/components/classroom/SecurePdfViewer';
 
 function getCsrfToken(): string {
   if (typeof document === 'undefined') return '';
@@ -51,6 +52,8 @@ interface DocumentItem {
   originalFilename?: string;
   fileSizeBytes?: string;
   pageCount?: number;
+  isFreePreview?: boolean;
+  allowDownload?: boolean;
   status: 'Published' | 'Draft' | 'Archived';
   displayOrder: number;
   createdAt: string;
@@ -81,13 +84,22 @@ interface TopicOption {
 }
 
 const CATEGORIES = [
+  'Study Notes',
+  'Lecture Notes',
+  'Chapter Notes',
+  'Practice Worksheets',
   'Formula Sheet',
   'Mind Map',
-  'DPP (Daily Practice Problems)',
+  'DPP',
+  'Previous Year Papers',
+  'Sample Papers',
+  'Answer Keys',
+  'Solutions',
+  'Reference Materials',
+  'Assignments',
   'Revision Notes',
-  'PYQ Solution',
   'Handbook',
-  'General Study Material',
+  'Other Resources',
 ];
 
 export default function AdminDocumentsPage() {
@@ -102,7 +114,11 @@ export default function AdminDocumentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [courseFilter, setCourseFilter] = useState('ALL');
   const [subjectFilter, setSubjectFilter] = useState('ALL');
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+
+  // Preview Modal State
+  const [previewDoc, setPreviewDoc] = useState<DocumentItem | null>(null);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -122,6 +138,8 @@ export default function AdminDocumentsPage() {
   const [displayOrder, setDisplayOrder] = useState<number>(1);
   const [pageCount, setPageCount] = useState<number>(10);
   const [status, setStatus] = useState<'Published' | 'Draft' | 'Archived'>('Published');
+  const [allowDownload, setAllowDownload] = useState<boolean>(true);
+  const [isFreePreview, setIsFreePreview] = useState<boolean>(false);
 
   // File Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -230,6 +248,8 @@ export default function AdminDocumentsPage() {
     setDisplayOrder(documents.length + 1);
     setPageCount(10);
     setStatus('Published');
+    setAllowDownload(true);
+    setIsFreePreview(false);
     setSelectedFile(null);
     setFormError(null);
     setUploadProgress(null);
@@ -248,6 +268,8 @@ export default function AdminDocumentsPage() {
     setDisplayOrder(d.displayOrder || 1);
     setPageCount(d.pageCount || 10);
     setStatus(d.status || 'Published');
+    setAllowDownload(d.allowDownload !== undefined ? d.allowDownload : true);
+    setIsFreePreview(Boolean(d.isFreePreview));
     setSelectedFile(null); // Optional replacement
     setFormError(null);
     setUploadProgress(null);
@@ -335,6 +357,8 @@ export default function AdminDocumentsPage() {
       formData.append('displayOrder', String(displayOrder));
       formData.append('pageCount', String(pageCount));
       formData.append('status', status);
+      formData.append('allowDownload', String(allowDownload));
+      formData.append('isFreePreview', String(isFreePreview));
 
       if (selectedFile) {
         formData.append('file', selectedFile);
@@ -413,6 +437,9 @@ export default function AdminDocumentsPage() {
       return false;
     }
     if (subjectFilter !== 'ALL' && d.subject.toLowerCase() !== subjectFilter.toLowerCase()) {
+      return false;
+    }
+    if (categoryFilter !== 'ALL' && (d.category || '').toLowerCase() !== categoryFilter.toLowerCase()) {
       return false;
     }
     if (statusFilter !== 'ALL' && d.status !== statusFilter) {
@@ -522,6 +549,20 @@ export default function AdminDocumentsPage() {
             {subjects.map((s) => (
               <option key={s.id} value={s.subjectName}>
                 {s.subjectName}
+              </option>
+            ))}
+          </select>
+
+          {/* Category filter */}
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="ALL">All Categories</option>
+            {CATEGORIES.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
               </option>
             ))}
           </select>
@@ -644,6 +685,13 @@ export default function AdminDocumentsPage() {
                     </td>
                     <td className="px-5 py-4 text-right whitespace-nowrap">
                       <div className="inline-flex items-center gap-1">
+                        <button
+                          onClick={() => setPreviewDoc(doc)}
+                          className="p-1.5 rounded-md text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                          title="Preview PDF Document"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => openEditModal(doc)}
                           className="p-1.5 rounded-md text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
@@ -949,6 +997,35 @@ export default function AdminDocumentsPage() {
                 </div>
               )}
 
+              {/* Permissions & Visibility */}
+              <div className="p-3.5 bg-gray-50/80 rounded-xl border border-gray-200/80 space-y-2.5">
+                <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                  Access &amp; Download Permissions
+                </p>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allowDownload}
+                    onChange={(e) => setAllowDownload(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-xs font-medium text-gray-700">
+                    Allow student file download (Disable for view-only reading in classroom)
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isFreePreview}
+                    onChange={(e) => setIsFreePreview(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-xs font-medium text-gray-700">
+                    Free preview document (Prospective students can read before course enrollment)
+                  </span>
+                </label>
+              </div>
+
               {/* Actions */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
                 <button
@@ -1016,6 +1093,45 @@ export default function AdminDocumentsPage() {
                 {isDeleting && <LoadingSpinner size="sm" className="p-0 text-white" />}
                 Delete
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Admin PDF Preview Modal */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-800 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 text-white bg-slate-950">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-indigo-500/20 text-indigo-400">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">{previewDoc.title}</h3>
+                  <p className="text-xs text-slate-400">
+                    {previewDoc.courseTitle || 'Curriculum'} • {previewDoc.subject} / {previewDoc.chapter}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPreviewDoc(null)}
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 p-4 overflow-hidden">
+              <SecurePdfViewer
+                documentId={previewDoc.id}
+                title={previewDoc.title}
+                category={previewDoc.category}
+                fileSizeBytes={previewDoc.fileSizeBytes}
+                pageCount={previewDoc.pageCount}
+                streamUrl={`/api/admin/documents/${previewDoc.id}/preview`}
+                allowDownload={previewDoc.allowDownload !== false}
+                studentName="Administrator"
+                courseTitle={previewDoc.courseTitle}
+              />
             </div>
           </div>
         </div>

@@ -64,6 +64,8 @@ export async function PUT(
       const rawDisplayOrder = formData.get('displayOrder') as string;
       const rawPageCount = formData.get('pageCount') as string;
       const status = formData.get('status') !== null ? (formData.get('status') as string).trim() : existing.status;
+      const isFreePreview = formData.get('isFreePreview') !== null ? (formData.get('isFreePreview') === 'true' || formData.get('isFreePreview') === '1') : existing.isFreePreview;
+      const allowDownload = formData.get('allowDownload') !== null ? (formData.get('allowDownload') === 'true' || formData.get('allowDownload') === '1') : existing.allowDownload;
 
       const courseId = rawCourseId ? parseInt(rawCourseId, 10) : existing.courseId;
       const subjectId = rawSubjectId ? parseInt(rawSubjectId, 10) : existing.subjectId;
@@ -140,6 +142,8 @@ export async function PUT(
           originalFilename,
           fileSizeBytes,
           pageCount,
+          isFreePreview,
+          allowDownload,
           status: status as any,
           displayOrder,
         },

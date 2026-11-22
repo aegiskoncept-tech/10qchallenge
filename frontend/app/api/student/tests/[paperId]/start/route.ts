@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTestSeriesById } from '@/lib/db/test-series';
-import { createTestAttempt } from '@/lib/db/test-attempts';
+import { createTestAttempt, getAttemptsForStudent } from '@/lib/db/test-attempts';
 import { requireAuth } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
@@ -41,6 +41,50 @@ export async function POST(
       );
     }
 
+    // Availability Window Verification
+    if (paper.startDate) {
+      const startMs = new Date(paper.startDate).getTime();
+      if (!isNaN(startMs) && startMs > Date.now()) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `This examination is scheduled to open on ${new Date(paper.startDate).toLocaleString()}. Early access is restricted.`,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    if (paper.endDate) {
+      const endMs = new Date(paper.endDate).getTime();
+      if (!isNaN(endMs) && endMs < Date.now()) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `The examination window closed on ${new Date(paper.endDate).toLocaleString()}. New attempts cannot be started.`,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Attempt Limits Enforcement
+    const studentAttempts = getAttemptsForStudent(auth.user.id);
+    const completedAttemptsCount = studentAttempts.filter(
+      (a) => Number(a.paperId) === paperId && (a.status === 'COMPLETED' || a.status === 'ABANDONED')
+    ).length;
+
+    const maxAllowed = (paper as any).maxAttempts || (paper as any).allowedAttempts;
+    if (typeof maxAllowed === 'number' && maxAllowed > 0 && completedAttemptsCount >= maxAllowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `You have reached the maximum allowed attempts (${maxAllowed}) for this examination.`,
+        },
+        { status: 403 }
+      );
+    }
+
     // 2. Validate essential test parameters & question configuration
     if (!paper.durationMinutes || paper.durationMinutes <= 0) {
       return NextResponse.json(
@@ -57,7 +101,7 @@ export async function POST(
     }
 
     // 3. Create or reuse active attempt (Idempotent server-side generation)
-    const { attempt, isExisting } = createTestAttempt({
+    const { attempt, isExisting } = await createTestAttempt({
       studentId: auth.user.id,
       studentName: auth.user.fullName,
       studentEmail: auth.user.email,

@@ -1,5 +1,5 @@
 // ==============================================================================
-// 10Q CHALLENGE LMS — PHASE 4.2 COMMERCE CORE TYPES
+// 10Q CHALLENGE LMS — FEATURE 11: COMMERCE CORE TYPES
 // Engine: PostgreSQL 16 (Commerce) & SQLite (Identity/Auth)
 // Framework: Next.js 16 + TypeScript
 // ==============================================================================
@@ -28,6 +28,52 @@ export type SettlementStatus =
   | 'REVERSED'
   | 'CANCELLED';
 
+export type RefundStatus =
+  | 'REQUESTED'
+  | 'PROCESSING'
+  | 'CONFIRMED'
+  | 'FAILED'
+  | 'REJECTED';
+
+export type InvoiceStatus =
+  | 'ISSUED'
+  | 'REFUNDED'
+  | 'PARTIALLY_REFUNDED'
+  | 'CANCELLED';
+
+export interface InvoiceEntity {
+  id: string; // UUID
+  invoiceNumber: string; // e.g. 10Q-INV-2026-00001
+  orderId: string;
+  paymentId: string;
+  userId: number;
+  billingFullName: string;
+  billingEmail: string;
+  billingPhone?: string | null;
+  billingAddressLine1?: string | null;
+  billingAddressLine2?: string | null;
+  billingCity?: string | null;
+  billingStateCode: string;
+  billingPostalCode?: string | null;
+  billingCountryCode: string;
+  currency: string;
+  originalAmount: number;
+  discountAmount: number;
+  couponCode?: string | null;
+  finalAmount: number;
+  gatewayName: string;
+  gatewayPaymentId: string;
+  merchantTxnId: string;
+  status: InvoiceStatus;
+  issuedAt: string;
+  metadata?: any;
+  createdAt: string;
+  updatedAt: string;
+  order?: OrderEntity;
+  items?: OrderItemEntity[];
+  refunds?: RefundEntity[];
+}
+
 export type EnrollmentSource =
   | 'COMMERCE_ORDER'
   | 'INTERNAL_FREE_GRANT'
@@ -40,15 +86,34 @@ export type AccessState =
   | 'REVOKED'
   | 'EXPIRED';
 
+export interface OrderItemEntity {
+  id: string; // UUID
+  orderId: string;
+  productType: 'COURSE';
+  productId: string;
+  productTitleSnapshot: string;
+  quantity: number;
+  unitPrice: number;
+  taxRateSnapshot: number;
+  taxAmount: number;
+  discountAmount: number;
+  lineTotal: number;
+  createdAt: string;
+}
+
 export interface OrderEntity {
   id: string; // UUID
   orderNumber: string;
   userId: number; // Linked to SQLite User ID
   courseId: string; // Course ID from courses.json
+  currency: string;
   originalAmount: number; // in INR (two decimal precision)
   discountAmount: number;
   netPayableAmount: number;
+  taxInclusiveAmount: number;
+  taxAmount: number;
   couponId?: string | null;
+  couponCode?: string | null;
   billingFullName: string;
   billingEmail: string;
   billingPhone?: string | null;
@@ -61,6 +126,11 @@ export interface OrderEntity {
   status: OrderStatus;
   createdAt: string;
   updatedAt: string;
+  expiresAt?: string | null;
+  completedAt?: string | null;
+  items?: OrderItemEntity[];
+  payments?: PaymentEntity[];
+  refunds?: RefundEntity[];
 }
 
 export interface PaymentAttemptEntity {
@@ -81,7 +151,7 @@ export interface PaymentAttemptEntity {
 export interface PaymentEntity {
   id: string; // UUID
   orderId: string;
-  paymentAttemptId: string;
+  paymentAttemptId?: string | null;
   gatewayName: 'PAYU' | 'INTERNAL_FREE_GRANT' | 'LEGACY';
   gatewayPaymentId: string;
   amount: number;
@@ -89,6 +159,59 @@ export interface PaymentEntity {
   settlementStatus: SettlementStatus;
   settledAt: string;
   metadata?: any;
+}
+
+export interface RefundEntity {
+  id: string; // UUID
+  orderId: string;
+  paymentId?: string | null;
+  refundReference: string;
+  amount: number;
+  currency: 'INR';
+  reason: string;
+  status: RefundStatus;
+  gatewayRefundId?: string | null;
+  initiatedBy: number;
+  initiatedAt: string;
+  processedAt?: string | null;
+  failureReason?: string | null;
+  createdAt: string;
+  isSimulated?: boolean;
+  isGatewayConfirmed?: boolean;
+  orderNumber?: string;
+  billingFullName?: string;
+  billingEmail?: string;
+}
+
+export interface GatewaySettlementEntity {
+  id: string; // UUID
+  gateway: string;
+  settlementReference: string;
+  settlementDate: string;
+  grossAmount: number;
+  refundAmount: number;
+  gatewayFee: number;
+  taxOnFee: number;
+  netSettlementAmount: number;
+  currency: 'INR';
+  settlementStatus: 'PENDING' | 'RECONCILED' | 'DISCREPANCY';
+  sourceReference?: string | null;
+  metadata?: any;
+  reconciledBy?: number | null;
+  reconciledAt?: string | null;
+  createdAt: string;
+}
+
+export interface PaymentEventEntity {
+  id: string; // UUID
+  orderId?: string | null;
+  paymentAttemptId?: string | null;
+  paymentId?: string | null;
+  eventType: string;
+  severity: 'INFO' | 'WARN' | 'ERROR' | 'CRITICAL';
+  source: string;
+  payload?: any;
+  createdAt: string;
 }
 
 export interface EnrollmentEntity {

@@ -12,14 +12,16 @@ import {
   ArrowRight,
   AlertCircle,
   Loader2,
+  Tag,
+  X,
+  Sparkles,
 } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { api } from '@/lib/api';
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, subtotal, discount, appliedCoupon, total, clearCart } = useCart();
+  const { items, subtotal, clearCart } = useCart();
   const { user } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -32,6 +34,16 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<'payu_upi' | 'payu_cards'>('payu_upi');
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Coupon state
+  const [couponInput, setCouponInput] = useState('');
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountAmount: number;
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -71,6 +83,52 @@ export default function CheckoutPage() {
     'Other': 'DL',
   };
 
+  const currentCourseId = String(items[0].courseId);
+  const discount = appliedCoupon ? appliedCoupon.discountAmount : 0;
+  const total = Math.max(0, subtotal - discount);
+
+  const handleApplyCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+
+    setCouponError(null);
+    setIsValidatingCoupon(true);
+
+    try {
+      const res = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          courseId: currentCourseId,
+          orderAmount: subtotal,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.valid) {
+        throw new Error(json.message || 'Invalid coupon code.');
+      }
+
+      setAppliedCoupon({
+        code: json.code,
+        discountAmount: json.discountAmount,
+        message: json.message,
+      });
+      setCouponInput('');
+    } catch (err: any) {
+      setCouponError(err.message || 'Failed to apply coupon.');
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponError(null);
+  };
+
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -89,7 +147,8 @@ export default function CheckoutPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          courseId: items[0].courseId,
+          courseId: currentCourseId,
+          couponCode: appliedCoupon?.code || undefined,
           billingFullName: formData.fullName,
           billingEmail: formData.email,
           billingPhone: formData.phone,
@@ -158,75 +217,73 @@ export default function CheckoutPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Priyanshu Jain"
                     value={formData.fullName}
                     onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E7E3F5] text-sm focus:outline-none focus:border-[#3F328A]"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[#E7E3F5] text-xs focus:outline-none focus:border-[#3F328A]"
+                    placeholder="e.g. Rahul Sharma"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-[#17152A] mb-1.5">
-                    Email Address (For Classroom Access) <span className="text-[#FF3F68]">*</span>
+                    Email Address (Account ID) <span className="text-[#FF3F68]">*</span>
                   </label>
                   <input
                     type="email"
                     required
-                    placeholder="student@example.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E7E3F5] text-sm focus:outline-none focus:border-[#3F328A]"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[#E7E3F5] text-xs focus:outline-none focus:border-[#3F328A]"
+                    placeholder="name@example.com"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-[#17152A] mb-1.5">
-                    Mobile Number <span className="text-[#FF3F68]">*</span>
+                    WhatsApp Mobile Number <span className="text-[#FF3F68]">*</span>
                   </label>
                   <input
                     type="tel"
                     required
-                    placeholder="+91 98765 43210"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E7E3F5] text-sm focus:outline-none focus:border-[#3F328A]"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[#E7E3F5] text-xs focus:outline-none focus:border-[#3F328A]"
+                    placeholder="10-digit mobile number"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-[#17152A] mb-1.5">
-                    State (For GST Tax Invoice)
+                    State of Residence (for GST) <span className="text-[#FF3F68]">*</span>
                   </label>
                   <select
                     value={formData.state}
                     onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E7E3F5] text-sm focus:outline-none focus:border-[#3F328A] bg-white"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[#E7E3F5] text-xs focus:outline-none focus:border-[#3F328A] bg-white"
                   >
-                    <option value="Karnataka">Karnataka</option>
-                    <option value="Maharashtra">Maharashtra</option>
-                    <option value="Rajasthan">Rajasthan</option>
-                    <option value="Delhi">Delhi / NCR</option>
-                    <option value="Uttar Pradesh">Uttar Pradesh</option>
-                    <option value="Telangana">Telangana</option>
-                    <option value="Tamil Nadu">Tamil Nadu</option>
-                    <option value="Other">Other State / UT</option>
+                    <option value="Karnataka">Karnataka (KA)</option>
+                    <option value="Maharashtra">Maharashtra (MH)</option>
+                    <option value="Rajasthan">Rajasthan (RJ)</option>
+                    <option value="Delhi">Delhi / NCR (DL)</option>
+                    <option value="Uttar Pradesh">Uttar Pradesh (UP)</option>
+                    <option value="Telangana">Telangana (TG)</option>
+                    <option value="Tamil Nadu">Tamil Nadu (TN)</option>
+                    <option value="Other">Other States</option>
                   </select>
                 </div>
               </div>
             </div>
 
-            {/* Payment Method Selector */}
+            {/* Payment Method Selection */}
             <div className="bg-white p-6 sm:p-8 rounded-3xl border border-[#E7E3F5] shadow-xs space-y-4">
               <h3 className="font-bold text-base text-[#17152A] flex items-center gap-2">
                 <span className="w-6 h-6 rounded-full bg-[#3F328A] text-white text-xs flex items-center justify-center font-bold">
                   2
                 </span>
-                <span>Payment Gateway (PayU Secure Hub)</span>
+                <span>Payment Gateway Mode</span>
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div
                   onClick={() => setPaymentMethod('payu_upi')}
                   className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-center gap-3 ${
@@ -240,7 +297,7 @@ export default function CheckoutPage() {
                   </div>
                   <div>
                     <div className="font-bold text-xs sm:text-sm text-[#17152A]">
-                      UPI / QR Code
+                      UPI / QR Code (PayU)
                     </div>
                     <p className="text-[11px] text-[#6E6990]">GPay, PhonePe, Paytm, BHIM</p>
                   </div>
@@ -259,9 +316,9 @@ export default function CheckoutPage() {
                   </div>
                   <div>
                     <div className="font-bold text-xs sm:text-sm text-[#17152A]">
-                      Debit / Credit Cards & NetBanking
+                      Cards & NetBanking (PayU)
                     </div>
-                    <p className="text-[11px] text-[#6E6990]">All Indian Banks & EMI</p>
+                    <p className="text-[11px] text-[#6E6990]">All Indian Banks & Debit/Credit Cards</p>
                   </div>
                 </div>
               </div>
@@ -276,7 +333,7 @@ export default function CheckoutPage() {
           </form>
         </div>
 
-        {/* Order Summary on Right */}
+        {/* Order Summary & Coupon on Right */}
         <div className="lg:col-span-5 space-y-4">
           <div className="bg-white p-6 sm:p-8 rounded-3xl border border-[#E7E3F5] shadow-lg space-y-6">
             <h3 className="font-bold text-lg text-[#17152A]">Review Order</h3>
@@ -295,23 +352,70 @@ export default function CheckoutPage() {
               ))}
             </div>
 
+            {/* Coupon Application Box */}
+            <div className="pt-2">
+              {appliedCoupon ? (
+                <div className="p-3 rounded-2xl bg-[#E8FAF0] border border-[#20D66B]/30 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs">
+                    <Sparkles size={14} className="text-[#16A34A]" />
+                    <div>
+                      <span className="font-bold text-[#16A34A]">{appliedCoupon.code}</span> applied
+                      <p className="text-[10px] text-[#16A34A]">₹{appliedCoupon.discountAmount.toLocaleString('en-IN')} savings</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoupon}
+                    className="p-1 rounded-lg hover:bg-[#20D66B]/20 text-[#16A34A] transition-colors"
+                    title="Remove coupon"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleApplyCoupon} className="space-y-1.5">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag size={13} className="absolute left-3 top-3 text-[#6E6990]" />
+                      <input
+                        type="text"
+                        value={couponInput}
+                        onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                        placeholder="Coupon (e.g. BITSAT500)"
+                        className="w-full pl-8 pr-3 py-2 rounded-xl border border-[#E7E3F5] text-xs font-mono font-bold tracking-wider uppercase focus:outline-none focus:border-[#3F328A]"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={!couponInput.trim() || isValidatingCoupon}
+                      className="px-4 py-2 rounded-xl bg-[#3F328A] hover:bg-[#2D246B] text-white font-bold text-xs transition-colors disabled:opacity-40"
+                    >
+                      {isValidatingCoupon ? <Loader2 size={13} className="animate-spin" /> : 'Apply'}
+                    </button>
+                  </div>
+                  {couponError && (
+                    <p className="text-[11px] text-[#FF3F68] font-medium">{couponError}</p>
+                  )}
+                </form>
+              )}
+            </div>
+
+            {/* Price Calculations */}
             <div className="pt-4 border-t border-[#F1EFFB] space-y-2 text-xs">
               <div className="flex justify-between text-[#6E6990]">
-                <span>Subtotal</span>
-                <span>₹{subtotal.toLocaleString('en-IN')}</span>
+                <span>Course Price</span>
+                <span className="font-semibold text-[#17152A]">₹{subtotal.toLocaleString('en-IN')}</span>
               </div>
+
               {discount > 0 && (
                 <div className="flex justify-between text-[#16A34A] font-semibold">
-                  <span>Coupon ({appliedCoupon?.code})</span>
+                  <span>Coupon Discount ({appliedCoupon?.code})</span>
                   <span>- ₹{discount.toLocaleString('en-IN')}</span>
                 </div>
               )}
-              <div className="flex justify-between text-[#6E6990]">
-                <span>GST (18% Included)</span>
-                <span className="text-[#20D66B]">₹0.00</span>
-              </div>
+
               <div className="flex justify-between items-baseline pt-3 border-t border-[#F1EFFB] text-base font-extrabold text-[#17152A]">
-                <span>Total Payable</span>
+                <span>Total Payable Amount</span>
                 <span className="text-2xl text-[#3F328A]">₹{total.toLocaleString('en-IN')}</span>
               </div>
             </div>
@@ -320,7 +424,7 @@ export default function CheckoutPage() {
               type="submit"
               form="checkout-form"
               disabled={isProcessing}
-              className="w-full py-4 rounded-xl bg-[#FF3F68] hover:bg-[#E02E53] text-white font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50"
+              className="w-full py-4 rounded-xl bg-[#FF3F68] hover:bg-[#E02E53] text-white font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50 cursor-pointer"
             >
               {isProcessing ? (
                 <>
@@ -337,10 +441,10 @@ export default function CheckoutPage() {
             </button>
 
             <div className="text-center text-[11px] text-[#6E6990] space-y-1">
-              <p>By completing this payment, you agree to 10Q Challenge terms & conditions.</p>
+              <p>Course prices are tax-inclusive. No additional GST added at payment.</p>
               <div className="flex items-center justify-center gap-1 text-[#20D66B] font-semibold">
                 <ShieldCheck size={13} />
-                <span>Encrypted with 256-bit SHA-512 Security</span>
+                <span>Encrypted PayU Sandbox Gateway Integration</span>
               </div>
             </div>
           </div>

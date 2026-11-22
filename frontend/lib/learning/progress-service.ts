@@ -50,7 +50,7 @@ export class LearningProgressService {
       `SELECT 1 FROM commerce.enrollments
        WHERE user_id = $1
          AND course_id = $2
-         AND settlement_status = 'SETTLED'
+         AND settlement_status IN ('SETTLED', 'UNVERIFIED_HISTORICAL')
          AND access_state IN ('ACTIVE', 'PROVISIONED')
        LIMIT 1;`,
       [numericUserId, String(numericCourseId)]
@@ -72,7 +72,7 @@ export class LearningProgressService {
     const res = await db.query(
       `SELECT DISTINCT course_id FROM commerce.enrollments
        WHERE user_id = $1
-         AND settlement_status = 'SETTLED'
+         AND settlement_status IN ('SETTLED', 'UNVERIFIED_HISTORICAL')
          AND access_state IN ('ACTIVE', 'PROVISIONED');`,
       [numericUserId]
     );

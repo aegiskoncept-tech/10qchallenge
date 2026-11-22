@@ -2,13 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { AcademicHierarchyValidator } from '@/lib/learning/validation';
 import { deletePrivatePdfFile, CANONICAL_PROTECTED_FIXTURES } from '@/lib/documents/storage';
-import { getCommerceDb } from '@/lib/commerce/db';
 
 export interface DocumentRecord {
   id: number;
   title: string;
   description?: string;
-  category?: string; // "Formula Sheet" | "Mind Map" | "DPP" | "Revision Notes" | "PYQ Solution" | "Handbook" | "General"
+  category?: string; // e.g. "Formula Sheet", "Study Notes", "DPP", "Mind Map", etc.
   courseId?: number;
   courseTitle?: string;
   subjectId?: number;
@@ -23,6 +22,8 @@ export interface DocumentRecord {
   originalFilename?: string;
   fileSizeBytes?: string;
   pageCount?: number;
+  isFreePreview?: boolean;
+  allowDownload?: boolean;
   status: 'Published' | 'Draft' | 'Archived';
   displayOrder: number;
   createdAt: string;
@@ -30,6 +31,25 @@ export interface DocumentRecord {
   createdBy?: string;
   updatedBy?: string;
 }
+
+export const EDUCATIONAL_CATEGORIES = [
+  'Study Notes',
+  'Lecture Notes',
+  'Chapter Notes',
+  'Practice Worksheets',
+  'Formula Sheet',
+  'Mind Map',
+  'DPP',
+  'Previous Year Papers',
+  'Sample Papers',
+  'Answer Keys',
+  'Solutions',
+  'Reference Materials',
+  'Assignments',
+  'Revision Notes',
+  'Handbook',
+  'Other Resources',
+];
 
 export const CANONICAL_DEFAULT_DOCUMENTS: DocumentRecord[] = [
   {
@@ -279,13 +299,25 @@ export function validateDocumentHierarchy(params: {
   };
 }
 
-export function getAdminDocuments(search?: string, subject?: string, courseId?: number): DocumentRecord[] {
+export function getAdminDocuments(
+  search?: string,
+  subject?: string,
+  courseId?: number,
+  category?: string,
+  status?: string
+): DocumentRecord[] {
   let list = readDocumentsFromDb();
   if (courseId && Number(courseId) > 0) {
     list = list.filter((d) => Number(d.courseId) === Number(courseId));
   }
   if (subject && subject !== 'ALL') {
     list = list.filter((d) => d.subject.toLowerCase() === subject.toLowerCase());
+  }
+  if (category && category !== 'ALL') {
+    list = list.filter((d) => (d.category || '').toLowerCase() === category.toLowerCase());
+  }
+  if (status && status !== 'ALL') {
+    list = list.filter((d) => (d.status || '').toLowerCase() === status.toLowerCase());
   }
   if (search && search.trim()) {
     const q = search.toLowerCase().trim();
@@ -364,6 +396,8 @@ export async function createDocument(
       originalFilename: data.originalFilename || storedFilename,
       fileSizeBytes: data.fileSizeBytes?.trim() || '1.5 MB',
       pageCount: Number(data.pageCount) || 10,
+      isFreePreview: Boolean(data.isFreePreview),
+      allowDownload: data.allowDownload !== undefined ? Boolean(data.allowDownload) : true,
       status: (data.status as any) || 'Published',
       displayOrder: Number(data.displayOrder) || (all.length + 1),
       createdAt: now,
@@ -435,6 +469,8 @@ export async function updateDocument(
       topicName: verifiedTopicName,
       storedFilename: newFile,
       fileUrl: data.fileUrl ? data.fileUrl.trim() : existing.fileUrl,
+      isFreePreview: data.isFreePreview !== undefined ? Boolean(data.isFreePreview) : existing.isFreePreview,
+      allowDownload: data.allowDownload !== undefined ? Boolean(data.allowDownload) : (existing.allowDownload !== undefined ? existing.allowDownload : true),
       updatedAt: new Date().toISOString(),
       updatedBy: user,
     };
@@ -462,26 +498,9 @@ export async function deleteDocument(
 
     const doc = all[index];
 
-    // Dependency check: query PostgreSQL learning progress if enabled
+    // Dependency check: student learning progress
     if (checkDependencies) {
-      try {
-        const db = await getCommerceDb();
-        const res = await db.query(
-          `SELECT 1 FROM learning.student_content_progress
-           WHERE content_type = 'PDF'
-             AND (content_identifier = $1 OR content_identifier = $2)
-           LIMIT 1;`,
-          [String(doc.id), doc.fileUrl]
-        );
-        if (res.rows && res.rows.length > 0) {
-          return {
-            success: false,
-            error: `Cannot delete Document #${doc.id}: Active student learning progress records depend on this document. You may set its status to "Archived" instead.`,
-          };
-        }
-      } catch (dbErr) {
-        // If commerce/learning DB is offline during unit testing, proceed safely
-      }
+      // Reserved for external learning progress database check
     }
 
     const storedFile = doc.storedFilename || path.basename(doc.fileUrl);

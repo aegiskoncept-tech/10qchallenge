@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const courseMap = new Map<string, string>();
     courses.forEach((c) => courseMap.set(String(c.id), c.title));
 
-    // Query orders joined with payment attempts, payments and anomalies
+    // Query orders joined with payment attempts, payments and refunds
     const sql = `
       SELECT 
         o.id,
@@ -29,12 +29,16 @@ export async function GET(req: NextRequest) {
         o.original_amount,
         o.discount_amount,
         o.net_payable_amount,
+        o.tax_inclusive_amount,
+        o.tax_amount,
+        o.coupon_code,
         o.billing_full_name,
         o.billing_email,
         o.billing_phone,
         o.billing_state_code,
         o.status AS order_status,
         o.created_at,
+        o.completed_at,
         pa.id AS attempt_id,
         pa.merchant_txn_id,
         pa.gateway_name,
@@ -43,7 +47,8 @@ export async function GET(req: NextRequest) {
         p.id AS payment_id,
         p.gateway_payment_id,
         p.settlement_status,
-        p.settled_at
+        p.settled_at,
+        COALESCE((SELECT SUM(r.amount) FROM commerce.refunds r WHERE r.order_id = o.id AND r.status IN ('REQUESTED', 'PROCESSING', 'CONFIRMED')), 0) as total_refunded
       FROM commerce.orders o
       LEFT JOIN commerce.payment_attempts pa ON pa.order_id = o.id
       LEFT JOIN commerce.payments p ON p.payment_attempt_id = pa.id
@@ -68,6 +73,9 @@ export async function GET(req: NextRequest) {
       originalAmount: parseFloat(r.original_amount) || 0,
       discountAmount: parseFloat(r.discount_amount) || 0,
       netPayableAmount: parseFloat(r.net_payable_amount) || 0,
+      taxInclusiveAmount: parseFloat(r.tax_inclusive_amount || r.net_payable_amount) || 0,
+      taxAmount: parseFloat(r.tax_amount || '0.00') || 0,
+      couponCode: r.coupon_code || null,
       billingFullName: r.billing_full_name,
       billingEmail: r.billing_email,
       billingPhone: r.billing_phone,
@@ -76,8 +84,10 @@ export async function GET(req: NextRequest) {
       merchantTxnId: r.merchant_txn_id || null,
       gatewayName: r.gateway_name || 'PayU Sandbox',
       gatewayPaymentId: r.gateway_payment_id || null,
-      settlementStatus: r.settlement_status || (r.order_status === 'SETTLED' ? 'SETTLED' : 'UNSETTLED'),
+      settlementStatus: r.settlement_status || (['PAID', 'SETTLED', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(r.order_status) ? 'SETTLED' : 'UNSETTLED'),
       settledAt: r.settled_at || null,
+      completedAt: r.completed_at || null,
+      totalRefunded: parseFloat(r.total_refunded || '0'),
       createdAt: r.created_at,
     }));
 
@@ -99,20 +109,22 @@ export async function GET(req: NextRequest) {
 
     // KPI Metrics calculation
     const totalOrders = orders.length;
-    const settledOrders = orders.filter((o) => o.orderStatus === 'SETTLED');
-    const totalRevenue = settledOrders.reduce((sum, o) => sum + o.netPayableAmount, 0);
-    const pendingCount = orders.filter((o) => o.orderStatus === 'PENDING').length;
-    const failedCount = orders.filter((o) => o.orderStatus === 'FAILED' || o.orderStatus === 'USER_CANCELLED').length;
+    const paidOrders = orders.filter((o) => ['PAID', 'SETTLED', 'PARTIALLY_REFUNDED'].includes(o.orderStatus));
+    const totalRevenue = paidOrders.reduce((sum, o) => sum + o.netPayableAmount, 0);
+    const pendingCount = orders.filter((o) => ['PENDING', 'PENDING_PAYMENT'].includes(o.orderStatus)).length;
+    const failedCount = orders.filter((o) => ['FAILED', 'CANCELLED', 'USER_CANCELLED'].includes(o.orderStatus)).length;
+    const refundedCount = orders.filter((o) => ['REFUNDED', 'PARTIALLY_REFUNDED'].includes(o.orderStatus)).length;
 
     return NextResponse.json({
       success: true,
       data: filtered,
       metrics: {
         totalOrders,
-        settledCount: settledOrders.length,
+        settledCount: paidOrders.length,
         totalRevenue,
         pendingCount,
         failedCount,
+        refundedCount,
         anomalyCount,
       },
     });

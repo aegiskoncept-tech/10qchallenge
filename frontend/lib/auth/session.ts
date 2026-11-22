@@ -3,8 +3,8 @@ import type { NextResponse } from 'next/server';
 import { AuthDb, type UserEntity, type SessionEntity } from './database';
 import { signJwt, verifyJwt, type JwtPayload } from './jwt';
 
-export const AUTH_COOKIE_NAME = '10q_auth_token';
-export const CSRF_COOKIE_NAME = '10q_csrf_token';
+export const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || '10q_auth_token';
+export const CSRF_COOKIE_NAME = process.env.CSRF_COOKIE_NAME || '10q_csrf_token';
 export const SESSION_DURATION_SECONDS = 7 * 24 * 3600; // 7 days
 
 export interface AuthSessionResult {
@@ -69,12 +69,12 @@ export function setAuthCookies(
   token: string,
   csrfToken: string
 ): void {
-  const isProd = process.env.NODE_ENV === 'production';
+  const isSecure = process.env.COOKIE_SECURE === 'true' || (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_APP_URL?.startsWith('http://localhost') && !process.env.NEXT_PUBLIC_APP_URL?.startsWith('http://127.0.0.1'));
 
   // Secure HTTP-Only session token
   response.cookies.set(AUTH_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: isProd,
+    secure: isSecure,
     sameSite: 'lax',
     path: '/',
     maxAge: SESSION_DURATION_SECONDS,
@@ -83,7 +83,7 @@ export function setAuthCookies(
   // Client-accessible CSRF cookie for double-submit header verification
   response.cookies.set(CSRF_COOKIE_NAME, csrfToken, {
     httpOnly: false,
-    secure: isProd,
+    secure: isSecure,
     sameSite: 'lax',
     path: '/',
     maxAge: SESSION_DURATION_SECONDS,

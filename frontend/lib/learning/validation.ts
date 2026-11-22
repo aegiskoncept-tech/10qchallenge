@@ -6,8 +6,6 @@
 
 import fs from 'fs';
 import path from 'path';
-import { CANONICAL_DEFAULT_VIDEOS, readVideosFromDb } from '../db/videos';
-import { CANONICAL_DEFAULT_DOCUMENTS, readDocumentsFromDb } from '../db/documents';
 
 interface CanonicalCourse {
   id: number;
@@ -46,21 +44,27 @@ interface CanonicalTopic {
 }
 
 function loadJson<T>(filename: string): T[] {
-  const primaryPath = path.join(process.cwd(), 'data', filename);
-  const fallbackPath = path.join(process.cwd(), 'frontend', 'data', filename);
+  const persistentDir = process.env.DATA_STORE_DIR;
+  const candidates = [
+    ...(persistentDir ? [path.join(persistentDir, filename), path.join(persistentDir, 'data', filename)] : []),
+    path.join(process.cwd(), 'data', filename),
+    path.join(process.cwd(), 'frontend', 'data', filename),
+  ];
 
-  const targetPath = fs.existsSync(primaryPath) ? primaryPath : fallbackPath;
-  if (!fs.existsSync(targetPath)) {
-    return [];
+  for (const targetPath of candidates) {
+    if (fs.existsSync(targetPath)) {
+      try {
+        const raw = fs.readFileSync(targetPath, 'utf-8');
+        if (raw.trim()) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (err) {
+        console.error(`[loadJson Error: ${filename}]`, err);
+      }
+    }
   }
-
-  try {
-    const raw = fs.readFileSync(targetPath, 'utf-8');
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error(`[loadJson Error: ${filename}]`, err);
-    return [];
-  }
+  return [];
 }
 
 export class AcademicHierarchyValidator {
@@ -170,13 +174,10 @@ export class AcademicHierarchyValidator {
 
     const trimmedId = contentIdentifier.trim();
     if (contentType === 'VIDEO') {
-      const allVideos = readVideosFromDb();
+      const allVideos = loadJson<any>('videos.json');
       const exists =
         allVideos.some(
           (v) => String(v.id) === trimmedId || v.vimeoVideoId === trimmedId || (v as any).providerVideoId === trimmedId
-        ) ||
-        CANONICAL_DEFAULT_VIDEOS.some(
-          (v) => String(v.id) === trimmedId || v.vimeoVideoId === trimmedId
         );
       if (!exists) {
         throw new Error(`Video identifier "${trimmedId}" does not exist in Video Master.`);
@@ -185,10 +186,9 @@ export class AcademicHierarchyValidator {
     }
 
     if (contentType === 'PDF') {
-      const allDocs = readDocumentsFromDb();
+      const allDocs = loadJson<any>('documents.json');
       const exists =
-        allDocs.some((d) => String(d.id) === trimmedId || d.fileUrl === trimmedId) ||
-        CANONICAL_DEFAULT_DOCUMENTS.some((d) => String(d.id) === trimmedId || d.fileUrl === trimmedId);
+        allDocs.some((d) => String(d.id) === trimmedId || d.fileUrl === trimmedId);
       if (!exists) {
         throw new Error(`Document identifier "${trimmedId}" does not exist in Document Master.`);
       }
@@ -225,13 +225,10 @@ export class AcademicHierarchyValidator {
     const chapters = this.getChapters();
 
     if (contentType === 'VIDEO') {
-      const allVideos = readVideosFromDb();
+      const allVideos = loadJson<any>('videos.json');
       const video =
         allVideos.find(
           (v) => String(v.id) === trimmedId || v.vimeoVideoId === trimmedId || (v as any).providerVideoId === trimmedId
-        ) ||
-        CANONICAL_DEFAULT_VIDEOS.find(
-          (v) => String(v.id) === trimmedId || v.vimeoVideoId === trimmedId
         );
       if (!video) {
         throw new Error(`Video identifier "${trimmedId}" does not exist in Video Master.`);
@@ -260,10 +257,9 @@ export class AcademicHierarchyValidator {
     }
 
     if (contentType === 'PDF') {
-      const allDocs = readDocumentsFromDb();
+      const allDocs = loadJson<any>('documents.json');
       const doc =
-        allDocs.find((d) => String(d.id) === trimmedId || d.fileUrl === trimmedId) ||
-        CANONICAL_DEFAULT_DOCUMENTS.find((d) => String(d.id) === trimmedId || d.fileUrl === trimmedId);
+        allDocs.find((d) => String(d.id) === trimmedId || d.fileUrl === trimmedId);
       if (!doc) {
         throw new Error(`Document identifier "${trimmedId}" does not exist in Document Master.`);
       }

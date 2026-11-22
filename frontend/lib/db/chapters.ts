@@ -601,13 +601,36 @@ export function getChapterDependencies(chapterId: number, chapterName: string): 
   count: number;
   details: string[];
 } {
-  // In the current system, videos and documents may reference chapters by name or ID in UI states or JSON
-  // We check for any dependent items safely:
   const details: string[] = [];
   let count = 0;
 
-  // Check if any topics, video records, or mock question banks reference this chapter
-  // For safety, future topics or content assignment will reference chapterId
+  try {
+    const cwd = process.cwd();
+    const topCandidates = [
+      path.join(cwd, 'data', 'topics.json'),
+      path.join(cwd, 'frontend', 'data', 'topics.json'),
+    ];
+
+    for (const p of topCandidates) {
+      if (fs.existsSync(p)) {
+        const raw = fs.readFileSync(p, 'utf-8');
+        if (raw.trim()) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const depTopics = parsed.filter((t: any) => Number(t.chapterId) === Number(chapterId));
+            if (depTopics.length > 0) {
+              count += depTopics.length;
+              details.push(`${depTopics.length} topic(s) (e.g. '${depTopics[0].topicName}')`);
+              break;
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[getChapterDependencies Error]', err);
+  }
+
   return { count, details };
 }
 

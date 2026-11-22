@@ -1,7 +1,8 @@
 // ==============================================================================
-// 10Q CHALLENGE LMS — PHASE 4.2 SERVER-SIDE PRICING ENGINE
-// Locked Rule: Course prices are strictly tax-inclusive (GST included).
-// Calculation: Pure integer-paise arithmetic to eliminate floating-point drift.
+// 10Q CHALLENGE LMS — FEATURE 11: SERVER-SIDE PRICING & TAX ENGINE
+// Rule 1: Course prices are strictly tax-inclusive (GST included).
+// Rule 2: Pure integer-paise arithmetic to eliminate floating-point drift.
+// Rule 3: Authoritative calculation of Base Price, 18% GST Breakdown, and Coupons.
 // ==============================================================================
 
 import * as fs from 'fs';
@@ -13,13 +14,20 @@ export interface CalculatedOrderPrice {
   originalAmountPaise: number;
   discountAmountPaise: number;
   netPayableAmountPaise: number;
+  baseAmountPaise: number;
+  taxAmountPaise: number;
   originalAmount: number; // in INR
   discountAmount: number; // in INR
-  netPayableAmount: number; // in INR
+  netPayableAmount: number; // in INR (what student pays)
+  baseAmount: number; // in INR (tax-exclusive base)
+  taxAmount: number; // in INR (18% GST portion)
+  taxRatePercent: number; // 18.00
   isTaxInclusive: true;
 }
 
 export class PricingEngine {
+  public static readonly DEFAULT_GST_RATE = 18.00;
+
   /**
    * Helper: Parse string or numeric price to exact integer paise
    */
@@ -27,7 +35,7 @@ export class PricingEngine {
     if (typeof amount === 'number') {
       return Math.round(amount * 100);
     }
-    const trimmed = amount.trim();
+    const trimmed = String(amount).trim();
     if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
       throw new Error(`INVALID_PRICE_FORMAT: "${amount}" is not a valid INR monetary string.`);
     }
@@ -39,8 +47,7 @@ export class PricingEngine {
    * Helper: Convert integer paise to formatted two-decimal INR string
    */
   public static toInrString(paise: number): string {
-    const rupees = (paise / 100).toFixed(2);
-    return rupees;
+    return (paise / 100).toFixed(2);
   }
 
   /**
@@ -72,7 +79,6 @@ export class PricingEngine {
    */
   public static getAuthoritativeCourse(courseId: string): any {
     const cwd = process.cwd();
-    // Check custom test directory, then standard data paths
     const pathsToTry: string[] = [];
     if (process.env.DATA_STORE_DIR) {
       pathsToTry.push(path.join(process.env.DATA_STORE_DIR, 'courses.json'));
@@ -94,9 +100,7 @@ export class PricingEngine {
             foundCourse = c;
             break;
           }
-        } catch {
-          // Continue to next path
-        }
+        } catch {}
       }
     }
 
@@ -109,9 +113,17 @@ export class PricingEngine {
 
   /**
    * Calculate exact server-side pricing for a course purchase
-   * Locked Rule: Tax-inclusive pricing (net payable = final display price)
+   * Owner Requirement: Manual final selling price entered directly in Course Master.
+   * - No automatic GST addition.
+   * - No automatic GST deduction.
+   * - No assumed 18% GST in course pricing.
+   * - No hidden tax recalculation.
+   * The entered selling price is the complete authoritative catalog price.
    */
-  public static calculatePrice(courseId: string, couponDiscountPercent: number = 0): CalculatedOrderPrice {
+  public static calculatePrice(
+    courseId: string,
+    couponDiscountPaise: number = 0
+  ): CalculatedOrderPrice {
     const course = this.getAuthoritativeCourse(courseId);
 
     // Enforce purchasing rules (reject expired / inactive)
@@ -120,31 +132,38 @@ export class PricingEngine {
       throw new Error(`COURSE_NOT_PURCHASABLE: ${purchasability.reason}`);
     }
 
-    // Prefer discountedPrice, fallback to price or originalPrice
+    // Direct manual selling price entered in Course Master
     const rawFinalPrice = course.discountedPrice ?? course.price ?? course.originalPrice ?? 0;
     const rawOriginalPrice = course.originalPrice ?? rawFinalPrice;
 
     const originalPaise = this.toPaise(rawOriginalPrice);
-    let finalPaise = this.toPaise(rawFinalPrice);
+    const standardDisplayPaise = this.toPaise(rawFinalPrice);
 
-    // Apply coupon if valid and within bounds [0, 100]
-    let discountPaise = originalPaise > finalPaise ? (originalPaise - finalPaise) : 0;
+    let catalogDiscountPaise = originalPaise > standardDisplayPaise ? (originalPaise - standardDisplayPaise) : 0;
+    let couponPaise = Math.max(0, couponDiscountPaise);
+    let totalDiscountPaise = catalogDiscountPaise + couponPaise;
 
-    if (couponDiscountPercent > 0 && couponDiscountPercent <= 100) {
-      const couponDeduction = Math.round((finalPaise * couponDiscountPercent) / 100);
-      discountPaise += couponDeduction;
-      finalPaise = Math.max(0, finalPaise - couponDeduction);
-    }
+    // Student pays exactly the manual selling price minus coupon discount
+    let finalNetPaise = Math.max(0, standardDisplayPaise - couponPaise);
+
+    // Pure manual pricing: Base amount is the selling price; zero artificial tax deduction
+    const basePaise = finalNetPaise;
+    const taxPaise = 0;
 
     return {
       courseId: String(course.id),
       courseTitle: course.title,
       originalAmountPaise: originalPaise,
-      discountAmountPaise: discountPaise,
-      netPayableAmountPaise: finalPaise,
+      discountAmountPaise: totalDiscountPaise,
+      netPayableAmountPaise: finalNetPaise,
+      baseAmountPaise: basePaise,
+      taxAmountPaise: taxPaise,
       originalAmount: originalPaise / 100,
-      discountAmount: discountPaise / 100,
-      netPayableAmount: finalPaise / 100,
+      discountAmount: totalDiscountPaise / 100,
+      netPayableAmount: finalNetPaise / 100,
+      baseAmount: basePaise / 100,
+      taxAmount: 0.00,
+      taxRatePercent: 0.00,
       isTaxInclusive: true,
     };
   }

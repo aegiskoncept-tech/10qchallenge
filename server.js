@@ -155,7 +155,8 @@ if (!next) {
   const isDev = process.env.NODE_ENV === 'development';
   const app = next({
     dev: isDev,
-    dir: frontendDir
+    dir: frontendDir,
+    turbo: false
   });
   const handle = app.getRequestHandler();
 
@@ -164,6 +165,42 @@ if (!next) {
       createServer(async (req, res) => {
         try {
           const parsedUrl = parse(req.url, true);
+          if (parsedUrl.pathname === '/api/internal/test-health') {
+            const isIsolated = process.env.TEST_DATABASE_MODE === 'isolated';
+            const sqlitePath = process.env.TEST_SQLITE_PATH || '';
+            const pgliteDir = process.env.TEST_PGLITE_DIR || '';
+            const testRoot = process.env.TEST_ENV_ROOT || '';
+
+            if (isIsolated) {
+              const cwd = process.cwd();
+              const canonicalSqlite = path.resolve(cwd, 'database', '10q_auth_dev.db');
+              const canonicalPglite = path.resolve(cwd, 'database', 'pg_commerce_dev');
+              const resolvedSqlite = path.resolve(sqlitePath);
+              const resolvedPglite = path.resolve(pgliteDir);
+
+              if (resolvedSqlite === canonicalSqlite || resolvedPglite === canonicalPglite) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, error: 'SECURITY BREACH: Isolated test server connected to canonical development database' }));
+                return;
+              }
+              if (!testRoot || !resolvedSqlite.startsWith(path.resolve(testRoot)) || !resolvedPglite.startsWith(path.resolve(testRoot))) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, error: 'SECURITY BREACH: Database paths outside approved TEST_ENV_ROOT' }));
+                return;
+              }
+            }
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              success: true,
+              mode: process.env.TEST_DATABASE_MODE || 'default',
+              port: port,
+              isIsolated,
+              sqlitePath: path.resolve(sqlitePath || 'database/10q_auth_dev.db'),
+              pgliteDir: path.resolve(pgliteDir || 'database/pg_commerce_dev'),
+            }));
+            return;
+          }
           await handle(req, res, parsedUrl);
         } catch (err) {
           console.error('[10Q Server] Error handling request:', req.url, err);

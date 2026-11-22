@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAttemptById } from '@/lib/db/test-attempts';
+import { getAttemptById, checkAndAutoFinalizeAttempt } from '@/lib/db/test-attempts';
 import { requireAuth } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
@@ -24,7 +24,8 @@ export async function GET(
       );
     }
 
-    const attempt = getAttemptById(attemptId);
+    // Auto-finalize if attempt expired while browser was inactive or disconnected
+    const attempt = await checkAndAutoFinalizeAttempt(attemptId, auth.user.id) || getAttemptById(attemptId);
     if (!attempt) {
       return NextResponse.json(
         { success: false, error: 'Test attempt not found.' },

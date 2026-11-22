@@ -290,6 +290,13 @@ export const CourseFormPanel: React.FC<CourseFormPanelProps> = ({
         price: form.discountedPrice || form.originalPrice || '4999',
       });
       setSuccessMessage(mode === 'create' ? 'Course created successfully!' : 'Course updated successfully!');
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('10q_courses_updated', { detail: { courseId: form.id } }));
+        try {
+          localStorage.setItem('10q_courses_updated_at', Date.now().toString());
+        } catch {}
+      }
     } catch (err: any) {
       console.error('[Course Form Save Error]', err);
       setErrorMessage(err?.message || 'Failed to save course. Please check all required fields.');
@@ -339,6 +346,13 @@ export const CourseFormPanel: React.FC<CourseFormPanelProps> = ({
       });
       setDeleteSafeguardError(null);
       setSuccessMessage('Course safely archived. Public purchase is disabled while existing student access is preserved.');
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('10q_courses_updated', { detail: { courseId: form.id } }));
+        try {
+          localStorage.setItem('10q_courses_updated_at', Date.now().toString());
+        } catch {}
+      }
     } catch (err: any) {
       setErrorMessage(err?.message || 'Failed to archive course.');
     } finally {
@@ -614,7 +628,6 @@ export const CourseFormPanel: React.FC<CourseFormPanelProps> = ({
                   return (
                     <label
                       key={sub.id}
-                      onClick={() => toggleSubject(sub.id)}
                       className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer select-none transition-all ${
                         isChecked
                           ? 'border-[#1455C0] bg-blue-50/70 text-[#1455C0] font-bold shadow-xs'
@@ -624,8 +637,8 @@ export const CourseFormPanel: React.FC<CourseFormPanelProps> = ({
                       <input
                         type="checkbox"
                         checked={isChecked}
-                        onChange={() => {}}
-                        className="w-3.5 h-3.5 rounded text-[#1455C0] focus:ring-0"
+                        onChange={() => toggleSubject(sub.id)}
+                        className="w-3.5 h-3.5 rounded text-[#1455C0] focus:ring-0 cursor-pointer"
                       />
                       <span className="truncate">{sub.subjectName}</span>
                     </label>

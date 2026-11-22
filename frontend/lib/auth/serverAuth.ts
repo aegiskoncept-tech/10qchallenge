@@ -2,6 +2,8 @@ import type { NextRequest, NextResponse } from 'next/server';
 import { AUTH_COOKIE_NAME, CSRF_COOKIE_NAME, validateSessionAndUser } from './session';
 import { AuthDb, type UserEntity, type SessionEntity } from './database';
 
+export { validateSessionAndUser };
+
 export interface AuthContextResult {
   authenticated: boolean;
   user?: UserEntity;

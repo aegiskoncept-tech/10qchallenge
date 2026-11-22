@@ -1,13 +1,13 @@
 // Edge-compatible JWT Implementation using Web Crypto API (SubtleCrypto)
 // Runs transparently in Next.js Edge Middleware and Node.js API Route Handlers
 
-export const AUTH_COOKIE_NAME = '10q_auth_token';
-export const CSRF_COOKIE_NAME = '10q_csrf_token';
+export const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || '10q_auth_token';
+export const CSRF_COOKIE_NAME = process.env.CSRF_COOKIE_NAME || '10q_csrf_token';
 
 const DEFAULT_SECRET = '10QChallenge_SecureKey_SuperSecret_2026_Minimum256BitsLongRequired!';
 
 function getJwtSecret(): string {
-  return process.env.JWT_SECRET || DEFAULT_SECRET;
+  return process.env.JWT_SECRET || process.env.SESSION_SECRET || DEFAULT_SECRET;
 }
 
 export interface JwtPayload {

@@ -1,0 +1,50 @@
+[
+  {
+    "id": "cat-bitsat",
+    "name": "BITSAT",
+    "slug": "bitsat",
+    "description": "BITSAT preparation, syllabus, bonuses, and campus cutoff insights"
+  },
+  {
+    "id": "cat-jee",
+    "name": "JEE Main",
+    "slug": "jee-main",
+    "description": "JEE Main strategy, high-weightage chapters, and rank predictor"
+  },
+  {
+    "id": "cat-comedk",
+    "name": "COMEDK",
+    "slug": "comedk",
+    "description": "COMEDK UGET counseling, RVCE / BMS / MSRIT cutoffs"
+  },
+  {
+    "id": "cat-viteee",
+    "name": "VITEEE",
+    "slug": "viteee",
+    "description": "VIT Vellore admissions, category-wise fee slots, and exam pattern"
+  },
+  {
+    "id": "cat-strategy",
+    "name": "Study Strategy",
+    "slug": "study-strategy",
+    "description": "Time management, test-taking temperament, and revision calendars"
+  },
+  {
+    "id": "cat-guidance",
+    "name": "College Guidance",
+    "slug": "college-guidance",
+    "description": "Placement statistics, branch preferences, and campus life"
+  },
+  {
+    "id": "cat-notes",
+    "name": "Formula Sheets & Notes",
+    "slug": "formula-sheets-notes",
+    "description": "High-yield formula summaries and short revision PDFs"
+  },
+  {
+    "id": "cat-general",
+    "name": "General",
+    "slug": "general",
+    "description": "Educational news, announcements, and general motivation"
+  }
+]

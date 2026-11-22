@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getVideoById, updateVideo, deleteVideo, validateVideoHierarchy, validateVideoProviderSecurity } from '@/lib/db/videos';
+import { getVideoById, updateVideo, deleteVideo, validateVideoHierarchy, validateVideoProviderSecurity, extractProviderVideoId } from '@/lib/db/videos';
 import { requireAdmin } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
@@ -60,9 +60,20 @@ export async function PUT(
 
     // Provider security validation if updating provider or identifiers
     if (body.provider !== undefined || body.providerVideoId !== undefined || body.vimeoVideoId !== undefined || body.videoUrl !== undefined) {
+      const activeProvider = (body.provider || existing.provider || 'VIMEO').toUpperCase();
+      let inputId = body.providerVideoId !== undefined ? body.providerVideoId : (body.vimeoVideoId !== undefined ? body.vimeoVideoId : existing.providerVideoId);
+      if (inputId) {
+        const extracted = extractProviderVideoId(activeProvider, inputId);
+        if (extracted) {
+          inputId = extracted;
+          if (body.providerVideoId !== undefined) body.providerVideoId = extracted;
+          if (body.vimeoVideoId !== undefined) body.vimeoVideoId = extracted;
+        }
+      }
+
       const providerSecurity = validateVideoProviderSecurity({
-        provider: body.provider || existing.provider,
-        providerVideoId: body.providerVideoId !== undefined ? body.providerVideoId : existing.providerVideoId,
+        provider: activeProvider,
+        providerVideoId: inputId,
         vimeoVideoId: body.vimeoVideoId !== undefined ? body.vimeoVideoId : existing.vimeoVideoId,
         videoUrl: body.videoUrl !== undefined ? body.videoUrl : existing.videoUrl,
       });

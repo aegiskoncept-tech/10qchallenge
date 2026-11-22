@@ -9,7 +9,7 @@
     "discountedPrice": "4999",
     "price": "4999",
     "discount": "50% OFF",
-    "expiryDate": "2026-06-30",
+    "expiryDate": "2027-06-30",
     "enrolledStudent": 1450,
     "displayIndex": 1,
     "additionalDetails": "Includes 1-on-1 mentorship & 25 full mock tests",
@@ -36,7 +36,13 @@
     "examTag": "BITSAT",
     "discountPrice": 4999,
     "thumbnailUrl": "/uploads/courses/bitsat-crash-thumb.png",
-    "bannerUrl": "/uploads/courses/bitsat-crash-banner.png"
+    "bannerUrl": "/uploads/courses/bitsat-crash-banner.png",
+    "subjectIds": [
+      1,
+      2,
+      3,
+      4
+    ]
   },
   {
     "id": 2,
@@ -48,7 +54,7 @@
     "discountedPrice": "5999",
     "price": "5999",
     "discount": "54% OFF",
-    "expiryDate": "2026-05-31",
+    "expiryDate": "2027-05-31",
     "enrolledStudent": 980,
     "displayIndex": 2,
     "additionalDetails": "Daily DPPs and weekly live doubt clearance",
@@ -71,6 +77,11 @@
     "createdBy": "Admin_B@10qchallenge.in",
     "updatedBy": "Admin_B@10qchallenge.in",
     "createdAt": "2026-11-14T21:45:15.999Z",
-    "updatedAt": "2026-11-14T21:45:15.999Z"
+    "updatedAt": "2026-11-14T21:45:15.999Z",
+    "subjectIds": [
+      1,
+      2,
+      3
+    ]
   }
 ]

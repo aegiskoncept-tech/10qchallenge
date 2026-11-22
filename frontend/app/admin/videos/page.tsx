@@ -27,6 +27,7 @@ import {
   Info,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { UniversalVideoPlayer } from '@/components/classroom/UniversalVideoPlayer';
 
 function getCsrfToken(): string {
   if (typeof document === 'undefined') return '';
@@ -95,6 +96,7 @@ export default function AdminVideosPage() {
   const [courseFilter, setCourseFilter] = useState('ALL');
   const [subjectFilter, setSubjectFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [providerFilter, setProviderFilter] = useState('ALL');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -361,6 +363,7 @@ export default function AdminVideosPage() {
     if (courseFilter !== 'ALL' && String(vid.courseId) !== courseFilter) return false;
     if (subjectFilter !== 'ALL' && vid.subject.toLowerCase() !== subjectFilter.toLowerCase()) return false;
     if (statusFilter !== 'ALL' && vid.status !== statusFilter) return false;
+    if (providerFilter !== 'ALL' && (vid.provider || 'VIMEO').toUpperCase() !== providerFilter.toUpperCase()) return false;
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
       const match =
@@ -520,6 +523,19 @@ export default function AdminVideosPage() {
             <option value="Published">Published</option>
             <option value="Draft">Draft</option>
             <option value="Archived">Archived</option>
+          </select>
+
+          {/* Provider Filter */}
+          <select
+            value={providerFilter}
+            onChange={(e) => setProviderFilter(e.target.value)}
+            className="px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-slate-700 font-medium"
+          >
+            <option value="ALL">All Providers</option>
+            <option value="VIMEO">Vimeo</option>
+            <option value="YOUTUBE">YouTube</option>
+            <option value="HLS">HLS Stream</option>
+            <option value="CUSTOM">Custom Embed</option>
           </select>
         </div>
       </div>
@@ -734,33 +750,61 @@ export default function AdminVideosPage() {
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                     {provider === 'VIMEO'
-                      ? 'Vimeo Video ID *'
+                      ? 'Vimeo Video ID or URL *'
                       : provider === 'YOUTUBE'
-                      ? 'YouTube Video ID *'
-                      : 'Stream ID / Video Path *'}
+                      ? 'YouTube Video ID or URL *'
+                      : provider === 'HLS'
+                      ? 'HLS Stream Manifest (.m3u8) *'
+                      : 'Stream ID or Embed URL *'}
                   </label>
                   <input
                     type="text"
                     required
                     value={providerVideoId}
-                    onChange={(e) => setProviderVideoId(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const trimmed = val.trim();
+                      if (trimmed.includes('youtube.com') || trimmed.includes('youtu.be')) {
+                        setProvider('YOUTUBE');
+                        const m = trimmed.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+                        if (m) {
+                          setProviderVideoId(m[1]);
+                          return;
+                        }
+                      } else if (trimmed.includes('vimeo.com')) {
+                        setProvider('VIMEO');
+                        const m = trimmed.match(/(?:vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/[^\/]*\/videos\/|album\/(?:\d+\/)?video\/|video\/|)(\d+))/);
+                        if (m) {
+                          setProviderVideoId(m[1]);
+                          return;
+                        }
+                      } else if (trimmed.endsWith('.m3u8') || trimmed.includes('/hls')) {
+                        setProvider('HLS');
+                        setVideoUrl(trimmed);
+                        setProviderVideoId('hls-stream');
+                        return;
+                      }
+                      setProviderVideoId(val);
+                    }}
                     placeholder={
                       provider === 'VIMEO'
-                        ? 'e.g. 824804225'
+                        ? 'e.g. 824804225 or https://vimeo.com/824804225'
                         : provider === 'YOUTUBE'
-                        ? 'e.g. dQw4w9WgXcQ'
-                        : 'e.g. lecture-video-stream-01'
+                        ? 'e.g. dQw4w9WgXcQ or https://youtu.be/...'
+                        : provider === 'HLS'
+                        ? 'https://stream.example.com/live/index.m3u8'
+                        : 'e.g. lecture-stream-01'
                     }
                     className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 font-mono text-xs"
                   />
                 </div>
               </div>
 
-              {provider !== 'VIMEO' && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-start space-x-2">
-                  <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              {provider === 'CUSTOM' && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-xs flex items-start space-x-2">
+                  <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
                   <span>
-                    <strong>Notice:</strong> The student classroom currently officially supports Vimeo playback. Other providers will display a stream notice to students.
+                    <strong>Security Notice:</strong> Custom embed URLs must point to an approved streaming provider (Cloudflare Stream, Wistia, Loom, Vimeo, YouTube, 10Q Challenge CDN).
                   </span>
                 </div>
               )}
@@ -1004,34 +1048,15 @@ export default function AdminVideosPage() {
               </button>
             </div>
 
-            {/* Video Player Embed */}
-            <div className="mt-4 aspect-video bg-black rounded-xl overflow-hidden shadow-inner flex items-center justify-center">
-              {previewVideo.provider === 'YOUTUBE' ? (
-                <iframe
-                  src={`https://www.youtube.com/embed/${previewVideo.providerVideoId || previewVideo.vimeoVideoId}?autoplay=1`}
-                  title={previewVideo.title}
-                  className="w-full h-full border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              ) : previewVideo.provider === 'CUSTOM' || previewVideo.provider === 'HLS' ? (
-                <video
-                  src={previewVideo.videoUrl || ''}
-                  controls
-                  autoPlay
-                  className="w-full h-full"
-                >
-                  Your browser does not support the video tag.
-                </video>
-              ) : (
-                <iframe
-                  src={`https://player.vimeo.com/video/${previewVideo.providerVideoId || previewVideo.vimeoVideoId}?autoplay=1&title=0&byline=0&portrait=0`}
-                  title={previewVideo.title}
-                  className="w-full h-full border-0"
-                  allow="autoplay; fullscreen; picture-in-picture"
-                  allowFullScreen
-                />
-              )}
+            {/* Video Player Embed using Unified UniversalVideoPlayer */}
+            <div className="mt-4 aspect-video rounded-xl overflow-hidden shadow-inner">
+              <UniversalVideoPlayer
+                provider={previewVideo.provider}
+                videoId={previewVideo.providerVideoId || previewVideo.vimeoVideoId}
+                videoUrl={previewVideo.videoUrl}
+                title={previewVideo.title}
+                autoPlay={false}
+              />
             </div>
 
             <div className="mt-4 flex items-center justify-between text-xs text-slate-500">

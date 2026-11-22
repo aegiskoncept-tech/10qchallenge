@@ -50,8 +50,39 @@ next-env.d.ts
 # Backups and temporary locks
 data/backups/
 backups/
+data/test-attempts.json
+frontend/data/test-attempts.json
+database/*.db
+database/*.db-wal
+database/*.db-shm
 database/pg_commerce_dev/
+database/pg_content_dev/
+database/pg_commerce_staging/
+database/pg_commerce_isolated/
+database/10q_auth_staging.db*
+database/10q_auth_isolated.db*
 database/active_sandbox_test.json
 .*.lock
 .tmp_*
 .test-fixtures-*
+
+# Local test artifacts, scratch, and isolated environments
+isolated_acceptance_env/
+scratch/
+incident_evidence/
+storage/doubt_attachments/
+storage/documents/
+storage/tmp/
+frontend/.next_prod_verify/
+
+# Operator credentials and local test configs
+*OPERATOR_CREDENTIALS*
+*credentials*.json
+
+# Deployment packages
+*.tar.gz
+*.tgz
+
+# Audit and internal verification reports
+10Q_*.md
+FEATURE_*.md

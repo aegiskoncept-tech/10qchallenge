@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminVideos, createVideo, validateVideoHierarchy, validateVideoProviderSecurity } from '@/lib/db/videos';
+import { getAdminVideos, createVideo, validateVideoHierarchy, validateVideoProviderSecurity, extractProviderVideoId } from '@/lib/db/videos';
 import { requireAdmin } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
@@ -12,10 +12,11 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || undefined;
     const subject = searchParams.get('subject') || undefined;
+    const provider = searchParams.get('provider') || undefined;
     const rawCourseId = searchParams.get('courseId');
     const courseId = rawCourseId ? parseInt(rawCourseId, 10) : undefined;
 
-    const list = getAdminVideos(search, subject, courseId);
+    const list = getAdminVideos(search, subject, courseId, provider);
     return NextResponse.json({ success: true, data: list, count: list.length });
   } catch (err: any) {
     console.error('[GET /api/admin/videos Error]', err);
@@ -37,9 +38,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Video title is required.' }, { status: 400 });
     }
 
-    const providerVideoId = (body.providerVideoId || body.vimeoVideoId || '').trim();
+    const provider = (body.provider || 'VIMEO').toUpperCase();
+    let providerVideoId = (body.providerVideoId || body.vimeoVideoId || '').trim();
     if (!providerVideoId) {
       return NextResponse.json({ success: false, error: 'Video Provider ID or Vimeo ID is required.' }, { status: 400 });
+    }
+
+    // Auto-extract canonical ID if URL was provided
+    providerVideoId = extractProviderVideoId(provider, providerVideoId);
+    body.providerVideoId = providerVideoId;
+    if (provider === 'VIMEO') {
+      body.vimeoVideoId = providerVideoId;
     }
 
     const providerSecurity = validateVideoProviderSecurity({

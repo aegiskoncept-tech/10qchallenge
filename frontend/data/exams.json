@@ -5,7 +5,10 @@
     "slug": "bitsat",
     "isActive": true,
     "displayIndex": 1,
-    "description": "BITSAT Prep"
+    "description": "BITSAT Prep",
+    "previousSlugs": [],
+    "updatedBy": "Acceptance Admin Operator (test.admin@10qacceptance.local)",
+    "updatedAt": "2026-11-22T11:57:12.424Z"
   },
   {
     "id": 2,

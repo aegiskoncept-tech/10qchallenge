@@ -68,28 +68,31 @@ export async function GET(
     );
   }
 
-  // 6. Server-side enrollment authorization check
-  const isEligible = await LearningProgressService.isStudentEligibleForCourse(
-    authenticatedUserId,
-    courseId
-  );
-  if (!isEligible) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Forbidden: You do not have an active settled enrollment for this course.',
-      },
-      { status: 403 }
-    );
-  }
-
-  // 7. Resolve document from Document Master
+  // 6. Resolve document from Document Master
   const doc = getDocumentById(docId);
-  if (!doc || (doc.status && doc.status !== 'Published')) {
+  const isAdmin = auth.user.role === 'ADMIN';
+  if (!doc || (!isAdmin && doc.status && doc.status !== 'Published')) {
     return NextResponse.json(
       { success: false, error: `Document #${docId} not found or unavailable.` },
       { status: 404 }
     );
+  }
+
+  // 7. Server-side enrollment authorization check
+  if (!isAdmin && !doc.isFreePreview) {
+    const isEligible = await LearningProgressService.isStudentEligibleForCourse(
+      authenticatedUserId,
+      courseId
+    );
+    if (!isEligible) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Forbidden: You do not have an active settled enrollment for this course.',
+        },
+        { status: 403 }
+      );
+    }
   }
 
   // 8. Validate that document strictly belongs to the requested course's academic hierarchy
@@ -121,7 +124,20 @@ export async function GET(
     );
   }
 
-  // 10. Resolve physical PDF in private document storage outside public web root
+  // 10. Check download permissions
+  const { searchParams } = new URL(req.url);
+  const isDownload = searchParams.get('download') === 'true' || searchParams.get('download') === '1';
+  if (isDownload && doc.allowDownload === false && !isAdmin) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Forbidden: Direct file downloading is disabled for this study material.',
+      },
+      { status: 403 }
+    );
+  }
+
+  // 11. Resolve physical PDF in private document storage outside public web root
   const resolvedFile = resolvePrivatePdfFile(doc.fileUrl);
   if (!resolvedFile.success || !resolvedFile.filePath) {
     return NextResponse.json(
@@ -132,21 +148,88 @@ export async function GET(
 
   try {
     const stat = fs.statSync(resolvedFile.filePath);
-    const nodeStream = fs.createReadStream(resolvedFile.filePath);
-    const webStream = Readable.toWeb(nodeStream);
+    const fileSize = stat.size;
 
     // Apply safe filename handling for Content-Disposition
     const safeTitle = (doc.title || 'document').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
     const safeFilename = `${safeTitle}.pdf`;
+    const dispositionType = isDownload ? 'attachment' : 'inline';
+    const contentDisposition = `${dispositionType}; filename="${safeFilename}"`;
+
+    // 12. Support HTTP Range requests (RFC 7233)
+    const rangeHeader = req.headers.get('range');
+    if (rangeHeader) {
+      const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
+      if (!match) {
+        return new NextResponse(null, {
+          status: 416,
+          headers: {
+            'Content-Range': `bytes */${fileSize}`,
+            'Accept-Ranges': 'bytes',
+          },
+        });
+      }
+
+      const rawStart = match[1];
+      const rawEnd = match[2];
+
+      let start = 0;
+      let end = fileSize - 1;
+
+      if (rawStart && rawEnd) {
+        start = parseInt(rawStart, 10);
+        end = parseInt(rawEnd, 10);
+      } else if (rawStart) {
+        start = parseInt(rawStart, 10);
+      } else if (rawEnd) {
+        start = Math.max(0, fileSize - parseInt(rawEnd, 10));
+      }
+
+      if (isNaN(start) || isNaN(end) || start >= fileSize || start > end || start < 0) {
+        return new NextResponse(null, {
+          status: 416,
+          headers: {
+            'Content-Range': `bytes */${fileSize}`,
+            'Accept-Ranges': 'bytes',
+          },
+        });
+      }
+
+      end = Math.min(end, fileSize - 1);
+      const chunkSize = end - start + 1;
+
+      const fd = fs.openSync(resolvedFile.filePath, 'r');
+      const chunkBuffer = Buffer.alloc(chunkSize);
+      fs.readSync(fd, chunkBuffer, 0, chunkSize, start);
+      fs.closeSync(fd);
+
+      return new NextResponse(chunkBuffer, {
+        status: 206,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': contentDisposition,
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': String(chunkSize),
+          'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      });
+    }
+
+    // Full stream (HTTP 200)
+    const nodeStream = fs.createReadStream(resolvedFile.filePath);
+    const webStream = Readable.toWeb(nodeStream);
 
     return new NextResponse(webStream as any, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${safeFilename}"`,
+        'Content-Disposition': contentDisposition,
+        'Accept-Ranges': 'bytes',
         'Cache-Control': 'private, no-cache, no-store, must-revalidate',
         'X-Content-Type-Options': 'nosniff',
-        'Content-Length': String(stat.size),
+        'Content-Length': String(fileSize),
       },
     });
   } catch (err: any) {

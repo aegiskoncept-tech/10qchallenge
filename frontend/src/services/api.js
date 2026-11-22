@@ -55,10 +55,25 @@ export const apiGetCourseDetail = async (id) => {
 
 // 2. MASTER BLOGS API
 export const apiGetBlogs = async () => {
+  try {
+    const res = await fetch('/api/blogs');
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) return { data: json.data };
+    }
+  } catch (_) {}
   return fetchAPI('/masterblog/masterblogselect', 'POST');
 };
 
 export const apiGetBlogBySlugOrId = async ({ id, slug }) => {
+  try {
+    const target = slug || id;
+    const res = await fetch(`/api/blogs/${target}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) return { data: [json.data] };
+    }
+  } catch (_) {}
   return fetchAPI('/masterblog/masterblogselectbyid', 'POST', { masterblogid: id, slug });
 };
 

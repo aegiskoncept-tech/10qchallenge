@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { blogsData } from '../data/blogs';
 import { coursesData } from '../data/courses';
+import { serializeJsonLd } from '@/lib/content/json-ld';
 
 export default function BlogDetail() {
   const { slug } = useParams();
@@ -101,7 +102,7 @@ export default function BlogDetail() {
       {/* SEO JSON-LD Structured Data */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdData) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLdData) }}
       />
 
       {/* 1. Article Hero Banner */}

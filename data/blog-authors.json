@@ -1,0 +1,18 @@
+[
+  {
+    "id": "auth-ritesh",
+    "name": "Ritesh (BITS Pilani Alumni)",
+    "role": "Founder & Lead Mentor",
+    "avatar": "/site/assets/img/team/ritesh.jpg",
+    "bio": "BITS Pilani alumnus and founder of 10Q Challenge. Mentored 15,000+ engineering aspirants to top percentile ranks.",
+    "isVerified": true
+  },
+  {
+    "id": "auth-advisory",
+    "name": "Academic Advisory Board",
+    "role": "Senior Subject Matter Experts",
+    "avatar": "/site/assets/images/logo.png",
+    "bio": "Panel of senior academicians, ex-IITians, and national Olympiad trainers specializing in high-speed CBT pedagogy.",
+    "isVerified": true
+  }
+]

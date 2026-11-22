@@ -44,6 +44,11 @@ const NAV_ITEMS = [
     icon: HelpCircle,
   },
   {
+    label: 'My Study Notes',
+    href: '/student/notes',
+    icon: BookOpen,
+  },
+  {
     label: 'Invoices & Orders',
     href: '/student/invoices',
     icon: Receipt,

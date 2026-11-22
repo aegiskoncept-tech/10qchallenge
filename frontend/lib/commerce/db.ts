@@ -8,6 +8,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import { assertSafeDatabaseTarget } from '../db-guard';
 
 let pgliteInstance: any = null;
 let pgPoolInstance: any = null;
@@ -76,12 +77,29 @@ export async function getCommerceDb(): Promise<CommerceDbClient> {
   // 2. Otherwise, use isolated local PostgreSQL 16 engine via PGlite
   if (!pgliteInstance) {
     const { PGlite } = await import('@electric-sql/pglite');
-    const baseDir = process.env.DATA_STORE_DIR || process.cwd();
-    const dataDir = path.join(baseDir, 'database', 'pg_commerce_dev');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    const isIsolatedMode = process.env.TEST_DATABASE_MODE === 'isolated';
+    let dataDir: string;
+
+    if (isIsolatedMode) {
+      const testPgliteDir = process.env.TEST_PGLITE_DIR;
+      if (!testPgliteDir) {
+        throw new Error('[FAIL-CLOSED DB GUARD] TEST_DATABASE_MODE=isolated requires TEST_PGLITE_DIR to be specified.');
+      }
+      assertSafeDatabaseTarget(testPgliteDir, 'pglite');
+      dataDir = path.resolve(testPgliteDir);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+    } else {
+      const baseDir = process.env.DATA_STORE_DIR || process.cwd();
+      dataDir = path.join(baseDir, 'database', 'pg_commerce_dev');
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
     }
+
     pgliteInstance = new PGlite(dataDir);
+    await pgliteInstance.waitReady;
   }
 
   const db = pgliteInstance;

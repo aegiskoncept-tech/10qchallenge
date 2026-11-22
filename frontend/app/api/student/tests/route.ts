@@ -57,6 +57,8 @@ export async function GET(req: NextRequest) {
       totalMarks: t.totalMarks,
       price: t.price,
       status: t.status,
+      startDate: t.startDate,
+      endDate: t.endDate,
     }));
 
     return NextResponse.json({

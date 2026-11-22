@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminBlogs, createBlog } from '@/lib/db/blogs';
+import { getAdminBlogs, createBlog, getBlogDashboardMetrics } from '@/lib/db/blogs';
 import { requireAdmin } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
@@ -10,9 +10,19 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const search = searchParams.get('search') || undefined;
+  const category = searchParams.get('category') || undefined;
+  const status = searchParams.get('status') || undefined;
+  const sortBy = (searchParams.get('sortBy') as 'date' | 'views' | 'title') || 'date';
 
-  const list = getAdminBlogs(search);
-  return NextResponse.json({ success: true, data: list, count: list.length });
+  const list = getAdminBlogs(search, category, status, sortBy);
+  const metrics = getBlogDashboardMetrics();
+
+  return NextResponse.json({
+    success: true,
+    data: list,
+    count: list.length,
+    metrics,
+  });
 }
 
 export async function POST(req: NextRequest) {

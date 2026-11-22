@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getQuestionById, updateQuestion, deleteQuestion } from '@/lib/db/questions';
+import { getQuestionById, updateQuestion, deleteQuestion, getQuestionDependencies } from '@/lib/db/questions';
 import { requireAdmin } from '@/lib/auth/serverAuth';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +27,9 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Question not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, data: question });
+    const dependencies = getQuestionDependencies(questionId);
+
+    return NextResponse.json({ success: true, data: question, dependencies });
   } catch (error: any) {
     console.error('[GET /api/admin/questions/[id] Exception]', error);
     return NextResponse.json({ success: false, error: error?.message || 'Server error.' }, { status: 500 });
@@ -91,7 +93,8 @@ export async function DELETE(
     const result = await deleteQuestion(questionId);
 
     if (!result.success) {
-      return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+      const isConflict = result.error?.includes('Cannot delete') || result.error?.includes('referenced by');
+      return NextResponse.json({ success: false, error: result.error }, { status: isConflict ? 409 : 400 });
     }
 
     return NextResponse.json({

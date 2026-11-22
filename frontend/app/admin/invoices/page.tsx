@@ -2,65 +2,60 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  Receipt,
+  FileText,
+  Download,
   Search,
   Filter,
   CheckCircle2,
+  RotateCcw,
+  AlertCircle,
   Clock,
-  XCircle,
-  FileText,
   Printer,
   RefreshCw,
-  IndianRupee,
-  ShieldCheck,
-  User,
-  GraduationCap,
-  Building,
+  Eye,
+  Calendar,
+  DollarSign,
+  TrendingUp,
 } from 'lucide-react';
-import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
-
-interface InvoiceRecord {
-  id: string;
-  orderNumber: string;
-  invoiceNumber: string;
-  userId: number;
-  courseId: string;
-  courseTitle: string;
-  studentName: string;
-  studentEmail: string;
-  studentPhone: string;
-  stateCode: string;
-  originalAmount: number;
-  discountAmount: number;
-  netPayableAmount: number;
-  baseAmount: number;
-  gstAmount: number;
-  orderStatus: string;
-  settlementStatus: string;
-  gatewayPaymentId: string | null;
-  settledAt: string | null;
-  createdAt: string;
-}
+import { InvoiceEntity } from '@/lib/commerce/types';
 
 export default function AdminInvoicesPage() {
-  const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceEntity[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [activeInvoice, setActiveInvoice] = useState<InvoiceRecord | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceEntity | null>(null);
+  const [isBackfilling, setIsBackfilling] = useState(false);
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const fetchInvoices = async () => {
     setIsLoading(true);
+    setActionMessage(null);
     try {
-      const res = await fetch('/api/admin/invoices');
+      const q = new URLSearchParams();
+      if (search) q.set('search', search);
+      if (statusFilter) q.set('status', statusFilter);
+      if (startDate) q.set('startDate', startDate);
+      if (endDate) q.set('endDate', endDate);
+      q.set('page', String(page));
+      q.set('limit', '20');
+
+      const res = await fetch(`/api/admin/invoices?${q.toString()}`);
       if (res.ok) {
         const j = await res.json();
-        if (j.success && Array.isArray(j.data)) {
-          setInvoices(j.data);
+        if (j.success) {
+          setInvoices(j.invoices || []);
+          setTotal(j.total || 0);
+          setTotalPages(j.totalPages || 1);
         }
       }
-    } catch (err) {
-      console.error('[AdminInvoices] Fetch error:', err);
+    } catch (e: any) {
+      console.error('Failed to fetch invoices', e);
     } finally {
       setIsLoading(false);
     }
@@ -68,357 +63,453 @@ export default function AdminInvoicesPage() {
 
   useEffect(() => {
     fetchInvoices();
-  }, []);
+  }, [page, statusFilter]);
 
-  const filteredInvoices = invoices.filter((inv) => {
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase().trim();
-      const matchOrder = inv.orderNumber.toLowerCase().includes(q);
-      const matchName = inv.studentName.toLowerCase().includes(q);
-      const matchEmail = inv.studentEmail.toLowerCase().includes(q);
-      const matchCourse = inv.courseTitle.toLowerCase().includes(q);
-      const matchGateway = inv.gatewayPaymentId?.toLowerCase().includes(q) || false;
-      if (!matchOrder && !matchName && !matchEmail && !matchCourse && !matchGateway) return false;
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPage(1);
+    fetchInvoices();
+  };
+
+  const handleBackfill = async () => {
+    if (!confirm('Run idempotent backfill for verified historical paid orders?')) return;
+    setIsBackfilling(true);
+    setActionMessage(null);
+    try {
+      const res = await fetch('/api/admin/invoices/backfill', { method: 'POST' });
+      const j = await res.json();
+      if (j.success) {
+        setActionMessage({
+          type: 'success',
+          text: `Backfill completed successfully! Backfilled: ${j.backfilledCount}, Total Verified Invoices: ${j.existingCount}.`,
+        });
+        fetchInvoices();
+      } else {
+        setActionMessage({ type: 'error', text: j.error || 'Backfill operation failed.' });
+      }
+    } catch (e: any) {
+      setActionMessage({ type: 'error', text: e.message || 'Backfill request failed.' });
+    } finally {
+      setIsBackfilling(false);
     }
+  };
 
-    if (statusFilter !== 'ALL' && inv.settlementStatus !== statusFilter) return false;
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'ISSUED':
+      case 'PAID':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#E8FAF0] text-[#16A34A] flex items-center gap-1 w-fit">
+            <CheckCircle2 size={11} /> Issued & Paid
+          </span>
+        );
+      case 'PARTIALLY_REFUNDED':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#F0EDFD] text-[#3F328A] flex items-center gap-1 w-fit">
+            <RotateCcw size={11} /> Partially Refunded
+          </span>
+        );
+      case 'REFUNDED':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#EBF5FF] text-[#2563EB] flex items-center gap-1 w-fit">
+            <RotateCcw size={11} /> Fully Refunded
+          </span>
+        );
+      case 'CANCELLED':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#FEE2E2] text-[#DC2626] flex items-center gap-1 w-fit">
+            <AlertCircle size={11} /> Cancelled
+          </span>
+        );
+      default:
+        return (
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#FFF9E6] text-[#D97706] flex items-center gap-1 w-fit">
+            <Clock size={11} /> {status}
+          </span>
+        );
+    }
+  };
 
-    return true;
-  });
-
-  const totalRevenue = invoices
-    .filter((inv) => inv.settlementStatus === 'SETTLED' || inv.orderStatus === 'COMPLETED')
-    .reduce((sum, inv) => sum + inv.netPayableAmount, 0);
-
-  const totalGst = invoices
-    .filter((inv) => inv.settlementStatus === 'SETTLED' || inv.orderStatus === 'COMPLETED')
-    .reduce((sum, inv) => sum + inv.gstAmount, 0);
-
-  const settledCount = invoices.filter((i) => i.settlementStatus === 'SETTLED' || i.orderStatus === 'COMPLETED').length;
-  const pendingCount = invoices.filter((i) => i.settlementStatus === 'PENDING' && i.orderStatus !== 'COMPLETED').length;
+  const totalInvoicedSum = invoices.reduce((acc, inv) => acc + Number(inv.finalAmount || 0), 0);
+  const issuedCount = invoices.filter((i) => i.status === 'ISSUED').length;
+  const refundedCount = invoices.filter((i) => i.status === 'REFUNDED' || i.status === 'PARTIALLY_REFUNDED').length;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Page Title & Backfill Action */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Receipt className="h-7 w-7 text-indigo-600" />
-            Invoices & Student Orders
+          <h1 className="text-2xl font-black text-[#17152A] flex items-center gap-2">
+            <FileText className="text-[#1455C0]" size={26} />
+            Invoices & Billing Register
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Authoritative commerce transactions, GST tax breakdowns, payment settlement records, and invoices.
+          <p className="text-xs text-[#6E6990] mt-0.5">
+            Authoritative ledger of course enrollment invoices, receipts, and refund audit records.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={fetchInvoices}
-            disabled={isLoading}
-            className="p-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
-            title="Refresh Invoices"
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
+
+        <button
+          onClick={handleBackfill}
+          disabled={isBackfilling}
+          className="px-4 py-2 rounded-xl bg-[#1455C0] hover:bg-[#0E3E8E] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-2 w-fit disabled:opacity-50"
+        >
+          <RefreshCw size={13} className={isBackfilling ? 'animate-spin' : ''} />
+          <span>{isBackfilling ? 'Backfilling...' : 'Backfill Historical Orders'}</span>
+        </button>
+      </div>
+
+      {actionMessage && (
+        <div
+          className={`p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2 border ${
+            actionMessage.type === 'success'
+              ? 'bg-[#E8FAF0] border-[#BBF7D0] text-[#16A34A]'
+              : 'bg-[#FFF1F2] border-[#FFE4E6] text-[#E11D48]'
+          }`}
+        >
+          {actionMessage.type === 'success' ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+          <span>{actionMessage.text}</span>
+        </div>
+      )}
+
+      {/* Summary KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-[#E7E3F5] shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-[#6E6990] uppercase tracking-wider block">Total Invoiced (Page)</span>
+            <span className="text-xl font-black text-[#17152A]">₹{totalInvoicedSum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-[#EBF5FF] text-[#1455C0] flex items-center justify-center font-bold">
+            <DollarSign size={20} />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-[#E7E3F5] shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-[#6E6990] uppercase tracking-wider block">Issued & Active</span>
+            <span className="text-xl font-black text-[#16A34A]">{issuedCount}</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-[#E8FAF0] text-[#16A34A] flex items-center justify-center font-bold">
+            <CheckCircle2 size={20} />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-[#E7E3F5] shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-[#6E6990] uppercase tracking-wider block">Refunded / Adjusted</span>
+            <span className="text-xl font-black text-[#3F328A]">{refundedCount}</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-[#F0EDFD] text-[#3F328A] flex items-center justify-center font-bold">
+            <RotateCcw size={20} />
+          </div>
         </div>
       </div>
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Orders</p>
-          <p className="text-2xl font-bold text-gray-900 mt-2">{invoices.length}</p>
-        </div>
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs">
-          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Settled Revenue</p>
-          <p className="text-2xl font-bold text-emerald-700 mt-2">
-            ₹{totalRevenue.toLocaleString('en-IN')}
-          </p>
-        </div>
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs">
-          <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">GST Collected (18%)</p>
-          <p className="text-2xl font-bold text-indigo-700 mt-2">
-            ₹{totalGst.toLocaleString('en-IN')}
-          </p>
-        </div>
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs">
-          <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider">Pending Orders</p>
-          <p className="text-2xl font-bold text-amber-700 mt-2">{pendingCount}</p>
-        </div>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="relative sm:col-span-2">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+      {/* Filters & Search Toolbar */}
+      <div className="bg-white p-4 rounded-2xl border border-[#E7E3F5] shadow-xs space-y-3">
+        <form onSubmit={handleSearchSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+          <div className="relative md:col-span-2">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
             <input
               type="text"
-              placeholder="Search by Order #, Student Name, Email, Course..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="Search by Invoice No, Student Name, Email, Txn ID..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#CBD5E1] focus:outline-none focus:ring-2 focus:ring-[#1455C0]"
             />
           </div>
 
           <div>
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full py-2 px-3 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
+              className="w-full px-3 py-2 rounded-xl border border-[#CBD5E1] focus:outline-none focus:ring-2 focus:ring-[#1455C0]"
             >
-              <option value="ALL">All Settlement Statuses</option>
-              <option value="SETTLED">SETTLED (Verified)</option>
-              <option value="PENDING">PENDING (Awaiting Gateway)</option>
-              <option value="FAILED">FAILED</option>
+              <option value="">All Statuses</option>
+              <option value="ISSUED">Issued / Paid</option>
+              <option value="PARTIALLY_REFUNDED">Partially Refunded</option>
+              <option value="REFUNDED">Fully Refunded</option>
             </select>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="w-full py-2 bg-[#17152A] hover:bg-black text-white font-bold rounded-xl transition-all"
+            >
+              Filter Ledger
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setStatusFilter('');
+                setStartDate('');
+                setEndDate('');
+                setPage(1);
+                fetchInvoices();
+              }}
+              className="px-3 py-2 bg-[#F1F5F9] text-[#475569] font-bold rounded-xl hover:bg-[#E2E8F0]"
+            >
+              Reset
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Invoices Register Table */}
+      <div className="bg-white rounded-3xl border border-[#E7E3F5] overflow-hidden shadow-xs">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-[#17152A]">
+            <thead className="bg-[#F8FAFC] text-[#64748B] font-bold border-b border-[#E2E8F0]">
+              <tr>
+                <th className="p-4">Invoice No.</th>
+                <th className="p-4">Student Name & Email</th>
+                <th className="p-4">Program Enrolled</th>
+                <th className="p-4">Original</th>
+                <th className="p-4">Coupon</th>
+                <th className="p-4">Final Paid</th>
+                <th className="p-4">Gateway Txn ID</th>
+                <th className="p-4">Issue Date</th>
+                <th className="p-4">Status</th>
+                <th className="p-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F1F5F9]">
+              {isLoading && (
+                <tr>
+                  <td colSpan={10} className="p-8 text-center text-[#94A3B8]">
+                    Loading verified invoices from PostgreSQL ledger...
+                  </td>
+                </tr>
+              )}
+              {!isLoading && invoices.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="p-8 text-center text-[#94A3B8]">
+                    No invoices match the search criteria.
+                  </td>
+                </tr>
+              )}
+              {!isLoading &&
+                invoices.map((inv) => {
+                  const courseNames =
+                    inv.items && inv.items.length > 0
+                      ? inv.items.map((i) => i.productTitleSnapshot).join(', ')
+                      : 'BITSAT 2026 Master Crash Course';
+
+                  return (
+                    <tr key={inv.id} className="hover:bg-[#F8FAFC] transition-colors">
+                      <td className="p-4 font-mono font-bold text-[#1455C0]">
+                        {inv.invoiceNumber}
+                      </td>
+                      <td className="p-4">
+                        <div className="font-semibold text-[#0F172A]">{inv.billingFullName}</div>
+                        <div className="text-[11px] text-[#64748B]">{inv.billingEmail}</div>
+                      </td>
+                      <td className="p-4 max-w-[180px] truncate" title={courseNames}>
+                        {courseNames}
+                      </td>
+                      <td className="p-4 text-[#64748B]">
+                        ₹{Number(inv.originalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="p-4">
+                        {Number(inv.discountAmount) > 0 ? (
+                          <span className="text-[#16A34A] font-semibold">
+                            -₹{Number(inv.discountAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            {inv.couponCode && ` (${inv.couponCode})`}
+                          </span>
+                        ) : (
+                          <span className="text-[#94A3B8]">—</span>
+                        )}
+                      </td>
+                      <td className="p-4 font-bold text-[#0F172A]">
+                        ₹{Number(inv.finalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="p-4 font-mono text-[11px] text-[#64748B]">
+                        {inv.gatewayPaymentId || inv.merchantTxnId}
+                      </td>
+                      <td className="p-4 text-[#64748B] text-[11px]">
+                        {new Date(inv.issuedAt).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </td>
+                      <td className="p-4">{getStatusBadge(inv.status)}</td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <a
+                            href={`/api/admin/invoices/${inv.id}/pdf`}
+                            download={`10Q-Invoice-${inv.invoiceNumber}.pdf`}
+                            className="p-1.5 rounded-lg bg-[#EBF5FF] hover:bg-[#1455C0] text-[#1455C0] hover:text-white transition-colors"
+                            title="Download PDF"
+                          >
+                            <Download size={13} />
+                          </a>
+                          <button
+                            onClick={() => setSelectedInvoice(inv)}
+                            className="p-1.5 rounded-lg bg-[#F1F5F9] hover:bg-[#334155] text-[#334155] hover:text-white transition-colors"
+                            title="View Details"
+                          >
+                            <Eye size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination Bar */}
+        <div className="p-4 bg-[#F8FAFC] border-t border-[#E2E8F0] flex items-center justify-between text-xs text-[#64748B]">
+          <span>
+            Showing {invoices.length} of {total} registered invoices
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-3 py-1.5 rounded-lg bg-white border border-[#CBD5E1] disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="font-bold">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-3 py-1.5 rounded-lg bg-white border border-[#CBD5E1] disabled:opacity-40"
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Invoices Table */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
-        {isLoading ? (
-          <div className="p-12 text-center">
-            <LoadingSpinner size="lg" />
-            <p className="text-sm text-gray-500 mt-2">Loading transactions...</p>
-          </div>
-        ) : filteredInvoices.length === 0 ? (
-          <div className="p-12 text-center">
-            <Receipt className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-base font-medium text-gray-900">No orders or invoices found</p>
-            <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">
-              Transactions will automatically populate when students initiate checkout or complete course enrollments.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                <tr>
-                  <th className="py-3.5 px-4">Order / Invoice</th>
-                  <th className="py-3.5 px-4">Student Details</th>
-                  <th className="py-3.5 px-4">Course Enrolled</th>
-                  <th className="py-3.5 px-4">Amount (GST Incl.)</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-4">Date</th>
-                  <th className="py-3.5 px-4 text-right">Invoice</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredInvoices.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-gray-50/75 transition-colors">
-                    <td className="py-3.5 px-4">
-                      <div>
-                        <span className="font-mono font-semibold text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                          {inv.orderNumber}
-                        </span>
-                        {inv.gatewayPaymentId && (
-                          <p className="text-[11px] text-gray-500 font-mono mt-1">
-                            PayU: {inv.gatewayPaymentId}
-                          </p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div>
-                        <p className="font-medium text-gray-900 text-xs flex items-center gap-1">
-                          <User className="h-3 w-3 text-gray-400" />
-                          {inv.studentName}
-                        </p>
-                        <p className="text-xs text-gray-500">{inv.studentEmail}</p>
-                        <p className="text-[11px] text-gray-400">State: {inv.stateCode}</p>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-amber-50 text-amber-900 border border-amber-200">
-                        <GraduationCap className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                        <span className="line-clamp-1 max-w-[200px]">{inv.courseTitle}</span>
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div>
-                        <p className="font-bold text-gray-900 text-xs">
-                          ₹{inv.netPayableAmount.toLocaleString('en-IN')}
-                        </p>
-                        <p className="text-[11px] text-gray-500">
-                          Taxable: ₹{inv.baseAmount.toLocaleString('en-IN')} + GST ₹{inv.gstAmount.toLocaleString('en-IN')}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      {inv.settlementStatus === 'SETTLED' || inv.orderStatus === 'COMPLETED' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <CheckCircle2 className="h-3 w-3" />
-                          SETTLED
-                        </span>
-                      ) : inv.settlementStatus === 'PENDING' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                          <Clock className="h-3 w-3" />
-                          PENDING
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200">
-                          <XCircle className="h-3 w-3" />
-                          FAILED
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-xs text-gray-600">
-                      {new Date(inv.createdAt).toLocaleDateString('en-IN', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={() => setActiveInvoice(inv)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                        title="View Tax Invoice"
-                      >
-                        <FileText className="h-3.5 w-3.5" />
-                        View
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Tax Invoice Modal Preview */}
-      {activeInvoice && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-8 shadow-2xl border border-gray-200 transition-all max-h-[90vh] overflow-y-auto print:p-0 print:border-none print:shadow-none">
-            {/* Modal Header with Print Button */}
-            <div className="flex items-center justify-between pb-4 border-b border-gray-100 print:hidden">
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-                Official GST Tax Invoice Preview
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition-colors"
-                >
-                  <Printer className="h-3.5 w-3.5" />
-                  Print / Save PDF
-                </button>
-                <button
-                  onClick={() => setActiveInvoice(null)}
-                  className="text-gray-400 hover:text-gray-600 text-xl font-bold ml-2"
-                >
-                  ×
-                </button>
+      {/* Admin Invoice Detail Modal */}
+      {selectedInvoice && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-8 shadow-2xl border border-[#E7E3F5] space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-[#E7E3F5]">
+              <div>
+                <h3 className="text-xl font-black text-[#1455C0]">10Q CHALLENGE LMS</h3>
+                <p className="text-[11px] text-[#6E6990]">Admin Verified Invoice Inspection</p>
+              </div>
+              <div className="text-right text-xs">
+                <span className="font-bold text-[#1455C0] block font-mono text-sm">
+                  {selectedInvoice.invoiceNumber}
+                </span>
+                <span className="text-[#6E6990]">
+                  Issued: {new Date(selectedInvoice.issuedAt).toLocaleString('en-IN')}
+                </span>
               </div>
             </div>
 
-            {/* Tax Invoice Printable Body */}
-            <div className="mt-6 space-y-6 text-sm text-gray-800 font-sans">
-              {/* Header Details */}
-              <div className="flex justify-between items-start border-b pb-6">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 tracking-tight">10Q CHALLENGE</h2>
-                  <p className="text-xs text-gray-500 mt-1">10Q Challenge EduTech Pvt. Ltd.</p>
-                  <p className="text-xs text-gray-500">GSTIN: 29AABCU9603R1ZM</p>
-                  <p className="text-xs text-gray-500">SAC Code: 999293 (Online Education Services)</p>
-                  <p className="text-xs text-gray-500">Support: support@10qchallenge.in</p>
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="space-y-1">
+                <span className="font-bold text-[#6E6990] block">Student Billing Details:</span>
+                <p className="font-bold text-[#0F172A]">{selectedInvoice.billingFullName}</p>
+                <p className="text-[#64748B]">{selectedInvoice.billingEmail}</p>
+                <p className="text-[#64748B]">State: {selectedInvoice.billingStateCode}, {selectedInvoice.billingCountryCode}</p>
+                <p className="text-[#64748B]">User ID: #{selectedInvoice.userId}</p>
+                <p className="font-mono text-[10px] text-[#94A3B8]">Order UUID: {selectedInvoice.orderId}</p>
+              </div>
+
+              <div className="space-y-1 text-right">
+                <span className="font-bold text-[#6E6990] block">Gateway Settlement Evidence:</span>
+                <p className="font-semibold text-[#0F172A]">Gateway: {selectedInvoice.gatewayName}</p>
+                <p className="font-mono text-[#64748B] text-[11px]">PayU Payment ID: {selectedInvoice.gatewayPaymentId}</p>
+                <p className="font-mono text-[#64748B] text-[11px]">Txn ID: {selectedInvoice.merchantTxnId}</p>
+                <div className="pt-1">{getStatusBadge(selectedInvoice.status)}</div>
+              </div>
+            </div>
+
+            {/* Line Items */}
+            <div className="border border-[#E2E8F0] rounded-2xl overflow-hidden">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-[#F8FAFC] text-[#64748B] font-bold border-b border-[#E2E8F0]">
+                  <tr>
+                    <th className="p-3">Program / Item Description</th>
+                    <th className="p-3 text-right">Catalog Price</th>
+                    <th className="p-3 text-right">Line Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F1F5F9]">
+                  {(selectedInvoice.items && selectedInvoice.items.length > 0 ? selectedInvoice.items : [
+                    {
+                      id: '1',
+                      productTitleSnapshot: 'BITSAT 2026 Master Crash Course (Updated Batch)',
+                      unitPrice: selectedInvoice.originalAmount,
+                      lineTotal: selectedInvoice.finalAmount,
+                    }
+                  ]).map((item, idx) => (
+                    <tr key={idx}>
+                      <td className="p-3 font-medium text-[#0F172A]">{item.productTitleSnapshot}</td>
+                      <td className="p-3 text-right">₹{Number(item.unitPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                      <td className="p-3 text-right font-bold">₹{Number(item.unitPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Financial Summary */}
+            <div className="flex justify-end text-xs">
+              <div className="w-72 space-y-2">
+                <div className="flex justify-between text-[#64748B]">
+                  <span>Catalog Course Price:</span>
+                  <span>₹{Number(selectedInvoice.originalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
-                <div className="text-right">
-                  <span className="text-xs font-extrabold uppercase px-2 py-1 bg-emerald-50 text-emerald-800 rounded border border-emerald-200">
-                    TAX INVOICE
+                {Number(selectedInvoice.discountAmount) > 0 && (
+                  <div className="flex justify-between text-[#16A34A] font-semibold">
+                    <span>Coupon Discount {selectedInvoice.couponCode ? `(${selectedInvoice.couponCode})` : ''}:</span>
+                    <span>- ₹{Number(selectedInvoice.discountAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-extrabold text-sm text-[#0F172A] pt-2 border-t border-[#E2E8F0]">
+                  <span>Total Amount Paid:</span>
+                  <span className="text-[#1455C0]">
+                    ₹{Number(selectedInvoice.finalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </span>
-                  <p className="font-mono font-bold text-xs mt-2 text-gray-900">
-                    {activeInvoice.invoiceNumber}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Date: {new Date(activeInvoice.createdAt).toLocaleDateString('en-IN', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric',
-                    })}
-                  </p>
-                  <p className="text-xs text-gray-500">Order: {activeInvoice.orderNumber}</p>
                 </div>
               </div>
+            </div>
 
-              {/* Billed To */}
-              <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100 text-xs">
-                <div>
-                  <p className="font-bold text-gray-900 uppercase tracking-wider mb-1">Billed To (Student):</p>
-                  <p className="font-semibold text-gray-900">{activeInvoice.studentName}</p>
-                  <p className="text-gray-600">{activeInvoice.studentEmail}</p>
-                  {activeInvoice.studentPhone && <p className="text-gray-600">Ph: {activeInvoice.studentPhone}</p>}
-                </div>
-                <div>
-                  <p className="font-bold text-gray-900 uppercase tracking-wider mb-1">Place of Supply:</p>
-                  <p className="text-gray-700">State Code: {activeInvoice.stateCode} (India)</p>
-                  <p className="text-gray-700">Payment Status: <strong className="text-emerald-700">{activeInvoice.settlementStatus}</strong></p>
-                  {activeInvoice.gatewayPaymentId && (
-                    <p className="text-gray-500">Gateway Ref: {activeInvoice.gatewayPaymentId}</p>
-                  )}
-                </div>
+            {/* Refund & Adjustments Details */}
+            {selectedInvoice.refunds && selectedInvoice.refunds.length > 0 && (
+              <div className="p-3.5 rounded-xl bg-[#F0EDFD] border border-[#DDD6FE] text-xs space-y-1">
+                <span className="font-bold text-[#3F328A] block">Linked Refunds:</span>
+                {selectedInvoice.refunds.map((rf) => (
+                  <div key={rf.id} className="flex justify-between text-[#3F328A]">
+                    <span>Ref: {rf.refundReference} ({rf.reason || 'Requested refund'})</span>
+                    <span className="font-bold">₹{Number(rf.amount).toFixed(2)} ({rf.status})</span>
+                  </div>
+                ))}
               </div>
+            )}
 
-              {/* Line Items Table */}
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-gray-100 text-gray-700 font-bold uppercase tracking-wider border-b border-gray-200">
-                    <tr>
-                      <th className="py-2.5 px-3">Item Description</th>
-                      <th className="py-2.5 px-3">SAC</th>
-                      <th className="py-2.5 px-3 text-right">Taxable Amount</th>
-                      <th className="py-2.5 px-3 text-right">GST (18%)</th>
-                      <th className="py-2.5 px-3 text-right">Total (INR)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    <tr>
-                      <td className="py-3 px-3 font-semibold text-gray-900">
-                        {activeInvoice.courseTitle}
-                      </td>
-                      <td className="py-3 px-3 text-gray-500 font-mono">999293</td>
-                      <td className="py-3 px-3 text-right font-mono">
-                        ₹{activeInvoice.baseAmount.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-3 text-right font-mono">
-                        ₹{activeInvoice.gstAmount.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-3 text-right font-mono font-bold text-gray-900">
-                        ₹{activeInvoice.netPayableAmount.toFixed(2)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Total Calculation Summary */}
-              <div className="flex justify-end pt-2">
-                <div className="w-64 space-y-1.5 text-xs">
-                  <div className="flex justify-between text-gray-600">
-                    <span>Taxable Base Value:</span>
-                    <span className="font-mono">₹{activeInvoice.baseAmount.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-gray-600">
-                    <span>CGST (9%):</span>
-                    <span className="font-mono">₹{(activeInvoice.gstAmount / 2).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-gray-600">
-                    <span>SGST (9%):</span>
-                    <span className="font-mono">₹{(activeInvoice.gstAmount / 2).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between border-t border-gray-200 pt-2 text-sm font-bold text-gray-900">
-                    <span>Total Amount Paid:</span>
-                    <span className="font-mono">₹{activeInvoice.netPayableAmount.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer Note */}
-              <div className="border-t pt-4 text-[11px] text-gray-500 space-y-1">
-                <p>• This is a computer-generated tax invoice and requires no physical signature.</p>
-                <p>• All online educational services are tax-inclusive adhering to Central & State GST rules.</p>
+            <div className="pt-4 border-t border-[#E2E8F0] flex justify-between items-center text-xs">
+              <span className="text-[#64748B]">Audited by 10Q Commerce Settlement Ledger</span>
+              <div className="flex gap-2">
+                <a
+                  href={`/api/admin/invoices/${selectedInvoice.id}/pdf`}
+                  download={`10Q-Invoice-${selectedInvoice.invoiceNumber}.pdf`}
+                  className="px-4 py-2 rounded-xl bg-[#1455C0] text-white font-bold flex items-center gap-1.5 hover:bg-[#0E3E8E] transition-colors"
+                >
+                  <Download size={13} />
+                  <span>Download PDF</span>
+                </a>
+                <button
+                  onClick={() => setSelectedInvoice(null)}
+                  className="px-4 py-2 rounded-xl bg-white border border-[#CBD5E1] text-[#0F172A] font-bold hover:bg-[#F8FAFC] transition-colors"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>

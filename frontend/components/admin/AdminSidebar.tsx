@@ -21,6 +21,8 @@ import {
   FileCheck,
   Receipt,
   Clock,
+  RotateCcw,
+  Building,
   X,
   ChevronLeft,
   ChevronRight,
@@ -175,10 +177,28 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         icon: Clock
       },
       {
-        id: 'Orders & Payments',
-        name: 'Orders & Payments',
+        id: 'Orders',
+        name: 'Orders',
         href: '/admin/orders',
         icon: CreditCard
+      },
+      {
+        id: 'Payments Ledger',
+        name: 'Payments Ledger',
+        href: '/admin/payments',
+        icon: Receipt
+      },
+      {
+        id: 'Refunds Queue',
+        name: 'Refunds Queue',
+        href: '/admin/refunds',
+        icon: RotateCcw
+      },
+      {
+        id: 'Settlement & Rec',
+        name: 'Settlement & Rec',
+        href: '/admin/settlements',
+        icon: Building
       },
       {
         id: 'Student Invoices',

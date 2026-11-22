@@ -94,7 +94,16 @@ class AsyncMutex {
 
 export const attemptMutex = new AsyncMutex();
 
-// Advisory cross-process file lock with timeout and stale lock recovery
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err: any) {
+    return err.code === 'EPERM';
+  }
+}
+
+// Advisory cross-process file lock with timeout and safe stale lock recovery
 async function acquireAttemptFileLock(lockName = 'test-attempts', timeoutMs = 8000): Promise<() => Promise<void>> {
   const paths = getTestAttemptsDataPaths();
   const primaryDir = path.dirname(paths[0]);
@@ -110,17 +119,32 @@ async function acquireAttemptFileLock(lockName = 'test-attempts', timeoutMs = 80
     } catch (err: any) {
       if (err.code === 'EEXIST') {
         try {
-          const stats = fs.statSync(lockFile);
-          if (Date.now() - stats.mtimeMs > 10000) {
-            try { fs.unlinkSync(lockFile); } catch {}
-            continue;
+          if (fs.existsSync(lockFile)) {
+            const content = fs.readFileSync(lockFile, 'utf-8');
+            const lines = content.split('\n');
+            const lockPid = parseInt(lines[0], 10);
+            const lockTime = parseInt(lines[1], 10);
+            const ageMs = Date.now() - (isNaN(lockTime) ? 0 : lockTime);
+
+            // Stale lock recovery: only if older than 10s AND (process dead OR absolute ceiling 30s)
+            if (ageMs > 10000 && !isNaN(lockPid)) {
+              if (!isProcessAlive(lockPid) || ageMs > 30000) {
+                try { fs.unlinkSync(lockFile); } catch {}
+                continue;
+              }
+            }
           }
         } catch {}
         await new Promise((r) => setTimeout(r, 20));
       } else {
-        return async () => {};
+        // Windows/transient handle error: wait briefly and retry
+        await new Promise((r) => setTimeout(r, 25));
       }
     }
+  }
+
+  if (fd === null) {
+    throw new Error(`LockAcquisitionError: Could not acquire lock '${lockName}' within ${timeoutMs}ms.`);
   }
 
   return async () => {
@@ -138,8 +162,21 @@ async function acquireAttemptFileLock(lockName = 'test-attempts', timeoutMs = 80
 function getTestAttemptsDataPaths(): string[] {
   const cwd = process.cwd();
   const persistentDir = process.env.DATA_STORE_DIR;
+  if (persistentDir) {
+    const candidates = [
+      path.join(persistentDir, 'data', 'test-attempts.json'),
+      path.join(persistentDir, 'test-attempts.json'),
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) return [p];
+    }
+    const target = path.join(persistentDir, 'test-attempts.json');
+    const dir = path.dirname(target);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return [target];
+  }
+
   const candidates = [
-    ...(persistentDir ? [path.join(persistentDir, 'data', 'test-attempts.json'), path.join(persistentDir, 'test-attempts.json')] : []),
     path.join(cwd, 'data', 'test-attempts.json'),
     path.join(cwd, 'frontend', 'data', 'test-attempts.json'),
   ];
@@ -181,16 +218,41 @@ export function writeTestAttemptsToDb(attempts: TestAttemptRecord[]): void {
   const json = JSON.stringify(attempts, null, 2);
   const paths = getTestAttemptsDataPaths();
   for (const filePath of paths) {
-    try {
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const tmpPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
-      fs.writeFileSync(tmpPath, json, 'utf-8');
-      fs.renameSync(tmpPath, filePath);
-    } catch (err) {
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const tmpPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
+    
+    // Write to temp file and flush
+    const tmpFd = fs.openSync(tmpPath, 'w');
+    fs.writeFileSync(tmpFd, json, 'utf-8');
+    fs.fsyncSync(tmpFd);
+    fs.closeSync(tmpFd);
+
+    // Atomic replacement with retry loop on Windows
+    let replaced = false;
+    let lastError: any = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
       try {
-        fs.writeFileSync(filePath, json, 'utf-8');
-      } catch (innerErr) {}
+        fs.renameSync(tmpPath, filePath);
+        replaced = true;
+        break;
+      } catch (err: any) {
+        lastError = err;
+        if (err.code === 'EPERM' || err.code === 'EBUSY' || err.code === 'EACCES') {
+          // Windows transient lock - brief spin-delay
+          const delayMs = 15 * (attempt + 1);
+          const startWait = Date.now();
+          while (Date.now() - startWait < delayMs) {}
+        } else {
+          break;
+        }
+      }
+    }
+
+    if (!replaced) {
+      // Safe cleanup without touching original target file
+      try { fs.unlinkSync(tmpPath); } catch {}
+      throw new Error(`AtomicWriteError: Failed to safely replace '${filePath}' after retries: ${lastError?.message || 'Unknown error'}`);
     }
   }
 }
@@ -198,6 +260,36 @@ export function writeTestAttemptsToDb(attempts: TestAttemptRecord[]): void {
 export function getAttemptById(attemptId: string): TestAttemptRecord | null {
   const attempts = readTestAttemptsFromDb();
   return attempts.find((a) => a.id === attemptId) || null;
+}
+
+export function getAttemptsForStudent(studentId: number): TestAttemptRecord[] {
+  const attempts = readTestAttemptsFromDb();
+  return attempts
+    .filter((a) => Number(a.studentId) === Number(studentId))
+    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+}
+
+export async function checkAndAutoFinalizeAttempt(
+  attemptId: string,
+  studentId: number
+): Promise<TestAttemptRecord | null> {
+  const attempt = getAttemptById(attemptId);
+  if (!attempt) return null;
+
+  if (attempt.status === 'IN_PROGRESS') {
+    const nowMs = Date.now();
+    const expiryMs = new Date(attempt.expiresAt).getTime();
+    if (nowMs >= expiryMs) {
+      await submitTestAttempt({
+        attemptId,
+        studentId: attempt.studentId,
+        submissionReason: 'TIMEOUT',
+      });
+      return getAttemptById(attemptId);
+    }
+  }
+
+  return attempt;
 }
 
 export function getActiveAttemptForStudent(
@@ -230,111 +322,120 @@ export interface CreateAttemptInput {
   totalMarks: number;
 }
 
-export function createTestAttempt(input: CreateAttemptInput): {
+export async function createTestAttempt(input: CreateAttemptInput): Promise<{
   attempt: TestAttemptRecord;
   isExisting: boolean;
-} {
-  // 1. Idempotency Check: return active unexpired attempt if one exists
-  const existing = getActiveAttemptForStudent(input.studentId, input.paperId);
-  if (existing) {
-    return { attempt: existing, isExisting: true };
-  }
+}> {
+  return attemptMutex.run(async () => {
+    let releaseLock: (() => Promise<void>) | null = null;
+    try {
+      releaseLock = await acquireAttemptFileLock();
 
-  // 2. Generate unique secure attempt ID
-  const timestamp = Date.now();
-  const randomSuffix = crypto.randomBytes(3).toString('hex');
-  const attemptId = `att_${timestamp}_${randomSuffix}`;
-
-  const startedAtDate = new Date();
-  const startedAt = startedAtDate.toISOString();
-  const expiresAt = new Date(
-    startedAtDate.getTime() + input.durationMinutes * 60 * 1000
-  ).toISOString();
-
-  // Load paper for version & question IDs
-  const paper = getTestSeriesById(input.paperId);
-  const paperVersion = paper?.version || 1;
-
-  // Marking pattern based on exam / paper configuration
-  const isBitsat = input.examTag.toLowerCase().includes('bitsat');
-  const posMarks = paper?.markingScheme?.positiveMarks ?? (isBitsat ? 3 : 4);
-  const negMarks = paper?.markingScheme?.negativeMarks ?? 1;
-  const markingScheme: MarkingScheme = {
-    positiveMarks: posMarks,
-    negativeMarks: negMarks,
-  };
-
-  // Build immutable question snapshot for this attempt
-  const questionSnapshots: Record<string, QuestionSnapshot> = {};
-  if (paper?.questionIds && Array.isArray(paper.questionIds) && paper.questionIds.length > 0) {
-    const allQ = readQuestionsFromDb();
-    const allS = readSubjectsFromDb();
-    const allC = readChaptersFromDb();
-    const sMap = new Map(allS.map((s) => [Number(s.id), s.subjectName]));
-    const cMap = new Map(allC.map((c) => [Number(c.id), c.chapterName]));
-    const qMap = new Map(allQ.map((q) => [Number(q.id), q]));
-
-    paper.questionIds.forEach((qid, idx) => {
-      const q = qMap.get(Number(qid));
-      if (q && q.isActive !== false) {
-        questionSnapshots[String(q.id)] = {
-          id: q.id,
-          questionNumber: idx + 1,
-          questionType: q.questionType,
-          subjectId: q.subjectId,
-          subjectName: sMap.get(Number(q.subjectId)) || `Subject #${q.subjectId}`,
-          chapterId: q.chapterId,
-          chapterName: cMap.get(Number(q.chapterId)) || `Chapter #${q.chapterId}`,
-          questionContent: q.questionContent,
-          optionA: q.optionA,
-          optionB: q.optionB,
-          optionC: q.optionC,
-          optionD: q.optionD,
-          correctOption: q.correctOption,
-          rangeFrom: q.rangeFrom,
-          rangeTo: q.rangeTo,
-          tolerance: q.tolerance,
-          explanation: q.explanation,
-          difficulty: q.difficulty,
-          orderNumber: q.orderNumber,
-          positiveMarks: posMarks,
-          negativeMarks: negMarks,
-        };
+      // 1. Idempotency Check inside critical section with freshest state
+      const existing = getActiveAttemptForStudent(input.studentId, input.paperId);
+      if (existing) {
+        return { attempt: existing, isExisting: true };
       }
-    });
-  }
 
-  const snapshotCount = Object.keys(questionSnapshots).length;
+      // 2. Generate unique secure attempt ID
+      const timestamp = Date.now();
+      const randomSuffix = crypto.randomBytes(3).toString('hex');
+      const attemptId = `att_${timestamp}_${randomSuffix}`;
 
-  const newAttempt: TestAttemptRecord = {
-    id: attemptId,
-    studentId: input.studentId,
-    studentName: input.studentName,
-    studentEmail: input.studentEmail,
-    paperId: input.paperId,
-    paperTitle: input.paperTitle,
-    paperVersion,
-    examTag: input.examTag,
-    targetYear: input.targetYear,
-    durationMinutes: input.durationMinutes,
-    totalQuestions: snapshotCount > 0 ? snapshotCount : input.totalQuestions,
-    totalMarks: snapshotCount > 0 ? snapshotCount * posMarks : input.totalMarks,
-    markingScheme,
-    startedAt,
-    expiresAt,
-    status: 'IN_PROGRESS',
-    responses: {},
-    visitedQuestionIds: [],
-    questionSnapshots,
-    createdAt: startedAt,
-    updatedAt: startedAt,
-  };
+      const startedAtDate = new Date();
+      const startedAt = startedAtDate.toISOString();
+      const expiresAt = new Date(
+        startedAtDate.getTime() + input.durationMinutes * 60 * 1000
+      ).toISOString();
 
-  const all = readTestAttemptsFromDb();
-  all.push(newAttempt);
-  writeTestAttemptsToDb(all);
+      // Load paper for version & question IDs
+      const paper = getTestSeriesById(input.paperId);
+      const paperVersion = paper?.version || 1;
 
-  return { attempt: newAttempt, isExisting: false };
+      // Marking pattern based on exam / paper configuration
+      const isBitsat = input.examTag.toLowerCase().includes('bitsat');
+      const posMarks = paper?.markingScheme?.positiveMarks ?? (isBitsat ? 3 : 4);
+      const negMarks = paper?.markingScheme?.negativeMarks ?? 1;
+      const markingScheme: MarkingScheme = {
+        positiveMarks: posMarks,
+        negativeMarks: negMarks,
+      };
+
+      // Build immutable question snapshot for this attempt
+      const questionSnapshots: Record<string, QuestionSnapshot> = {};
+      if (paper?.questionIds && Array.isArray(paper.questionIds) && paper.questionIds.length > 0) {
+        const allQ = readQuestionsFromDb();
+        const allS = readSubjectsFromDb();
+        const allC = readChaptersFromDb();
+        const sMap = new Map(allS.map((s) => [Number(s.id), s.subjectName]));
+        const cMap = new Map(allC.map((c) => [Number(c.id), c.chapterName]));
+        const qMap = new Map(allQ.map((q) => [Number(q.id), q]));
+
+        paper.questionIds.forEach((qid, idx) => {
+          const q = qMap.get(Number(qid));
+          if (q && q.isActive !== false) {
+            questionSnapshots[String(q.id)] = {
+              id: q.id,
+              questionNumber: idx + 1,
+              questionType: q.questionType,
+              subjectId: q.subjectId,
+              subjectName: sMap.get(Number(q.subjectId)) || `Subject #${q.subjectId}`,
+              chapterId: q.chapterId,
+              chapterName: cMap.get(Number(q.chapterId)) || `Chapter #${q.chapterId}`,
+              questionContent: q.questionContent,
+              optionA: q.optionA,
+              optionB: q.optionB,
+              optionC: q.optionC,
+              optionD: q.optionD,
+              correctOption: q.correctOption,
+              rangeFrom: q.rangeFrom,
+              rangeTo: q.rangeTo,
+              tolerance: q.tolerance,
+              explanation: q.explanation,
+              difficulty: q.difficulty,
+              orderNumber: q.orderNumber,
+              positiveMarks: posMarks,
+              negativeMarks: negMarks,
+            };
+          }
+        });
+      }
+
+      const snapshotCount = Object.keys(questionSnapshots).length;
+
+      const newAttempt: TestAttemptRecord = {
+        id: attemptId,
+        studentId: input.studentId,
+        studentName: input.studentName,
+        studentEmail: input.studentEmail,
+        paperId: input.paperId,
+        paperTitle: input.paperTitle,
+        paperVersion,
+        examTag: input.examTag,
+        targetYear: input.targetYear,
+        durationMinutes: input.durationMinutes,
+        totalQuestions: snapshotCount > 0 ? snapshotCount : input.totalQuestions,
+        totalMarks: snapshotCount > 0 ? snapshotCount * posMarks : input.totalMarks,
+        markingScheme,
+        startedAt,
+        expiresAt,
+        status: 'IN_PROGRESS',
+        responses: {},
+        visitedQuestionIds: [],
+        questionSnapshots,
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      };
+
+      const all = readTestAttemptsFromDb();
+      all.push(newAttempt);
+      writeTestAttemptsToDb(all);
+
+      return { attempt: newAttempt, isExisting: false };
+    } finally {
+      if (releaseLock) await releaseLock();
+    }
+  });
 }
 
 export interface SaveAnswerInput {

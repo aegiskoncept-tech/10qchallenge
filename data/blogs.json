@@ -17,7 +17,16 @@
     ],
     "status": "Published",
     "createdAt": "2026-11-01T00:00:00.000Z",
-    "updatedAt": "2026-11-01T00:00:00.000Z"
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "viewsCount": 48,
+    "seo": {
+      "seoTitle": "How to Score 340+ in BITSAT 2026: Strategy from Pilani Rankers",
+      "metaDescription": "Key time management tactics, question selection sequence, and bonus questions roadmap.",
+      "canonicalUrl": "https://10qchallenge.in/blog/how-to-score-340-plus-in-bitsat-2026",
+      "robotsIndex": true,
+      "robotsFollow": true
+    },
+    "revisions": []
   },
   {
     "id": 2,
@@ -36,6 +45,15 @@
     ],
     "status": "Published",
     "createdAt": "2026-11-02T00:00:00.000Z",
-    "updatedAt": "2026-11-02T00:00:00.000Z"
+    "updatedAt": "2026-11-02T00:00:00.000Z",
+    "viewsCount": 1,
+    "seo": {
+      "seoTitle": "COMEDK vs BITSAT vs JEE Main: A Complete Analysis for Aspirants",
+      "metaDescription": "Detailed comparison of negative marking schemes, college cutoffs, and seat matrices.",
+      "canonicalUrl": "https://10qchallenge.in/blog/comedk-vs-bitsat-vs-jee-main-analysis",
+      "robotsIndex": true,
+      "robotsFollow": true
+    },
+    "revisions": []
   }
 ]

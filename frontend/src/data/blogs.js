@@ -1,1 +1,59 @@
-export const blogsData = [];
+export const blogsData = [
+  {
+    "id": 1,
+    "title": "How to Score 340+ in BITSAT 2026: Strategy from Pilani Rankers",
+    "slug": "how-to-score-340-plus-in-bitsat-2026",
+    "excerpt": "Key time management tactics, question selection sequence, and bonus questions roadmap.",
+    "content": "\n# Mastering BITSAT 2026: The Comprehensive Preparation Blueprint\n\nBITSAT is fundamentally an examination of speed, accuracy, and tactical temperament. With 130 questions to be solved in 180 minutes, you have approximately 1.38 minutes per question.\n\n## 1. The Power of Speed and Accuracy\nUnlike JEE Advanced, where profound theoretical derivations dictate success, BITSAT tests high-yield formula recall and quick computational agility.\n\n## 2. Bonus Questions Strategy\nAttempting all 130 questions unlocks 12 bonus questions (3 Physics, 3 Chemistry, 3 Math/Bio, 3 English/LR) worth an additional 36 marks. Only attempt bonus questions if you have finished the main paper with at least 20 minutes to spare and an accuracy rate of 90%+.\n    ",
+    "author": "Ritesh (BITS Pilani Alumni)",
+    "category": "Exam Strategy",
+    "readTime": "6 min read",
+    "coverImage": "/site/assets/blog-bitsat.jpg",
+    "tags": [
+      "BITSAT",
+      "Strategy",
+      "Physics",
+      "Mathematics"
+    ],
+    "status": "Published",
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "viewsCount": 48,
+    "seo": {
+      "seoTitle": "How to Score 340+ in BITSAT 2026: Strategy from Pilani Rankers",
+      "metaDescription": "Key time management tactics, question selection sequence, and bonus questions roadmap.",
+      "canonicalUrl": "https://10qchallenge.in/blog/how-to-score-340-plus-in-bitsat-2026",
+      "robotsIndex": true,
+      "robotsFollow": true
+    },
+    "revisions": []
+  },
+  {
+    "id": 2,
+    "title": "COMEDK vs BITSAT vs JEE Main: A Complete Analysis for Aspirants",
+    "slug": "comedk-vs-bitsat-vs-jee-main-analysis",
+    "excerpt": "Detailed comparison of negative marking schemes, college cutoffs, and seat matrices.",
+    "content": "\n# Comparative Analysis: COMEDK, BITSAT & JEE Main\n\nUnderstanding the distinct exam architectures is essential for optimizing your revision schedule.\n\n- **BITSAT:** +3/-1 marking with 12 bonus questions.\n- **COMEDK:** 180 questions in 180 minutes with 0 negative marking.\n- **JEE Main:** +4/-1 marking with numerical value section.\n    ",
+    "author": "Academic Advisory Board",
+    "category": "College Guidance",
+    "readTime": "8 min read",
+    "coverImage": "/site/assets/blog-comparison.jpg",
+    "tags": [
+      "COMEDK",
+      "BITSAT",
+      "JEE"
+    ],
+    "status": "Published",
+    "createdAt": "2026-11-02T00:00:00.000Z",
+    "updatedAt": "2026-11-02T00:00:00.000Z",
+    "viewsCount": 1,
+    "seo": {
+      "seoTitle": "COMEDK vs BITSAT vs JEE Main: A Complete Analysis for Aspirants",
+      "metaDescription": "Detailed comparison of negative marking schemes, college cutoffs, and seat matrices.",
+      "canonicalUrl": "https://10qchallenge.in/blog/comedk-vs-bitsat-vs-jee-main-analysis",
+      "robotsIndex": true,
+      "robotsFollow": true
+    },
+    "revisions": []
+  }
+];

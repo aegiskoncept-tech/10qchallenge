@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, use, useCallback } from 'react';
+import React, { useState, useEffect, use, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   BookOpen,
@@ -9,6 +10,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   Clock,
   Download,
   ExternalLink,
@@ -25,6 +27,8 @@ import {
   AlertCircle,
   Loader2,
   FileCheck,
+  Menu,
+  X,
 } from 'lucide-react';
 import {
   ClassroomCurriculumData,
@@ -35,11 +39,24 @@ import {
   SanitizedClassroomDocument,
   TopicProgressStatus,
 } from '@/lib/learning/types';
-import { VimeoPlayer } from '@/components/student/VimeoPlayer';
+import { VimeoPlayer, UniversalVideoPlayer } from '@/components/student/VimeoPlayer';
+import { SecurePdfViewer } from '@/components/classroom/SecurePdfViewer';
 import { DoubtModal } from '@/components/student/DoubtModal';
+import { NoteModal } from '@/components/student/NoteModal';
 
 interface ClassroomPageProps {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id?: string; courseId?: string }>;
+}
+
+interface FlatLessonItem {
+  id: string;
+  type: 'TOPIC' | 'VIDEO' | 'DOCUMENT';
+  subjectId: number;
+  subjectName: string;
+  chapterId: number;
+  chapterName: string;
+  item: TopicProgressItem | SanitizedClassroomVideo | SanitizedClassroomDocument;
+  title: string;
 }
 
 function getCsrfToken(): string {
@@ -48,9 +65,33 @@ function getCsrfToken(): string {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
-export default function ClassroomPage({ params }: ClassroomPageProps) {
+function ClassroomLoadingSkeleton() {
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
+      <div className="w-12 h-12 rounded-2xl bg-[#F6F4FF] border border-[#E7E3F5] flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-[#3F328A] animate-spin" />
+      </div>
+      <div>
+        <h3 className="text-base font-extrabold text-[#17152A]">Loading Classroom...</h3>
+        <p className="text-xs text-[#6E6990] mt-1">
+          Authorizing enrollment and retrieving course curriculum
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ClassroomPageContent({ params }: ClassroomPageProps) {
   const resolvedParams = use(params);
-  const courseId = parseInt(resolvedParams.id, 10);
+  const rawId = resolvedParams.courseId || resolvedParams.id;
+  const courseId = parseInt(rawId || '0', 10);
+
+  const searchParams = useSearchParams();
+  const querySubjectId = searchParams?.get('subject') ? parseInt(searchParams.get('subject')!, 10) : null;
+  const queryChapterId = searchParams?.get('chapter') ? parseInt(searchParams.get('chapter')!, 10) : null;
+  const queryTopicId = searchParams?.get('topic') ? parseInt(searchParams.get('topic')!, 10) : null;
+  const queryVideoId = searchParams?.get('video') ? parseInt(searchParams.get('video')!, 10) : null;
+  const queryDocId = searchParams?.get('document') ? parseInt(searchParams.get('document')!, 10) : null;
 
   // Authoritative curriculum state loaded from PostgreSQL via GET /api/student/classroom/[courseId]
   const [curriculum, setCurriculum] = useState<ClassroomCurriculumData | null>(null);
@@ -72,6 +113,9 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
   const [activeDocument, setActiveDocument] = useState<SanitizedClassroomDocument | null>(null);
   const [activeChapter, setActiveChapter] = useState<ClassroomChapter | null>(null);
 
+  // Mobile syllabus drawer toggle
+  const [showMobileSyllabus, setShowMobileSyllabus] = useState(false);
+
   // Video playback configuration fetched from GET /api/student/classroom/[courseId]/video/[videoId]
   const [videoPlaybackConfig, setVideoPlaybackConfig] = useState<any | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
@@ -79,10 +123,161 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
 
   // Mutation and interactive state
   const [isDoubtModalOpen, setIsDoubtModalOpen] = useState(false);
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [noteModalContext, setNoteModalContext] = useState<any>(null);
   const [mutatingTopicId, setMutatingTopicId] = useState<number | null>(null);
   const [mutatingVideoId, setMutatingVideoId] = useState<number | null>(null);
+  const [mutatingDocId, setMutatingDocId] = useState<number | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
+
+  const openNoteModal = (customContext?: any) => {
+    setNoteModalContext({
+      courseId,
+      courseTitle: curriculum?.courseTitle,
+      subjectId: selectedSubjectId || undefined,
+      subjectName: currentSubject?.subjectName,
+      chapterId: activeChapter?.chapterId,
+      chapterName: activeChapter?.chapterName,
+      topicId: activeTopic?.topicId,
+      topicName: activeTopic?.topicName,
+      videoId: activeVideo?.id,
+      videoTitle: activeVideo?.title,
+      documentId: activeDocument?.id,
+      documentTitle: activeDocument?.title,
+      ...customContext,
+    });
+    setIsNoteModalOpen(true);
+  };
+
+  // Flattened sequential curriculum list for linear Previous / Next navigation
+  const flatLessons: FlatLessonItem[] = useMemo(() => {
+    if (!curriculum?.subjects) return [];
+    const list: FlatLessonItem[] = [];
+    for (const sub of curriculum.subjects) {
+      for (const chap of sub.chapters || []) {
+        for (const top of chap.topics || []) {
+          list.push({
+            id: `TOPIC-${top.topicId}`,
+            type: 'TOPIC',
+            subjectId: sub.subjectId,
+            subjectName: sub.subjectName,
+            chapterId: chap.chapterId,
+            chapterName: chap.chapterName,
+            item: top,
+            title: top.topicName,
+          });
+        }
+        for (const vid of chap.videos || []) {
+          list.push({
+            id: `VIDEO-${vid.id}`,
+            type: 'VIDEO',
+            subjectId: sub.subjectId,
+            subjectName: sub.subjectName,
+            chapterId: chap.chapterId,
+            chapterName: chap.chapterName,
+            item: vid,
+            title: vid.title,
+          });
+        }
+        for (const doc of chap.documents || []) {
+          list.push({
+            id: `DOCUMENT-${doc.id}`,
+            type: 'DOCUMENT',
+            subjectId: sub.subjectId,
+            subjectName: sub.subjectName,
+            chapterId: chap.chapterId,
+            chapterName: chap.chapterName,
+            item: doc,
+            title: doc.title,
+          });
+        }
+      }
+    }
+    return list;
+  }, [curriculum]);
+
+  // Current linear index in flattened sequence
+  const currentLessonIndex = useMemo(() => {
+    if (contentType === 'TOPIC' && activeTopic) {
+      return flatLessons.findIndex(
+        (l) => l.type === 'TOPIC' && (l.item as TopicProgressItem).topicId === activeTopic.topicId
+      );
+    }
+    if (contentType === 'VIDEO' && activeVideo) {
+      return flatLessons.findIndex(
+        (l) => l.type === 'VIDEO' && (l.item as SanitizedClassroomVideo).id === activeVideo.id
+      );
+    }
+    if (contentType === 'DOCUMENT' && activeDocument) {
+      return flatLessons.findIndex(
+        (l) => l.type === 'DOCUMENT' && (l.item as SanitizedClassroomDocument).id === activeDocument.id
+      );
+    }
+    return -1;
+  }, [flatLessons, contentType, activeTopic, activeVideo, activeDocument]);
+
+  const prevLesson = currentLessonIndex > 0 ? flatLessons[currentLessonIndex - 1] : null;
+  const nextLesson =
+    currentLessonIndex >= 0 && currentLessonIndex < flatLessons.length - 1
+      ? flatLessons[currentLessonIndex + 1]
+      : null;
+
+  // Navigate to target lesson from linear sequence
+  const navigateToFlatLesson = (target: FlatLessonItem) => {
+    setSelectedSubjectId(target.subjectId);
+    setExpandedChapterIds((prev) => new Set([...prev, target.chapterId]));
+
+    const targetSub = curriculum?.subjects.find((s) => s.subjectId === target.subjectId);
+    const targetChap = targetSub?.chapters?.find((c) => c.chapterId === target.chapterId) || null;
+    if (targetChap) setActiveChapter(targetChap);
+
+    if (target.type === 'TOPIC') {
+      setContentType('TOPIC');
+      setActiveTopic(target.item as TopicProgressItem);
+      setActiveVideo(null);
+      setActiveDocument(null);
+    } else if (target.type === 'VIDEO') {
+      setContentType('VIDEO');
+      setActiveVideo(target.item as SanitizedClassroomVideo);
+      setActiveTopic(null);
+      setActiveDocument(null);
+    } else if (target.type === 'DOCUMENT') {
+      setContentType('DOCUMENT');
+      setActiveDocument(target.item as SanitizedClassroomDocument);
+      setActiveTopic(null);
+      setActiveVideo(null);
+    }
+    setActionSuccessMessage(null);
+    setActionErrorMessage(null);
+    setShowMobileSyllabus(false);
+  };
+
+  // Synchronize browser URL query parameters dynamically without full refresh
+  useEffect(() => {
+    if (typeof window !== 'undefined' && courseId > 0 && selectedSubjectId && activeChapter?.chapterId) {
+      const sp = new URLSearchParams();
+      sp.set('subject', String(selectedSubjectId));
+      sp.set('chapter', String(activeChapter.chapterId));
+      if (contentType === 'TOPIC' && activeTopic) {
+        sp.set('topic', String(activeTopic.topicId));
+      } else if (contentType === 'VIDEO' && activeVideo) {
+        sp.set('video', String(activeVideo.id));
+      } else if (contentType === 'DOCUMENT' && activeDocument) {
+        sp.set('document', String(activeDocument.id));
+      }
+      const newUrl = `${window.location.pathname}?${sp.toString()}`;
+      window.history.replaceState({ ...window.history.state, as: newUrl, url: newUrl }, '', newUrl);
+    }
+  }, [
+    courseId,
+    selectedSubjectId,
+    activeChapter?.chapterId,
+    contentType,
+    activeTopic?.topicId,
+    activeVideo?.id,
+    activeDocument?.id,
+  ]);
 
   // Load authoritative curriculum from server
   const loadCurriculum = useCallback(
@@ -153,44 +348,136 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
           const data: ClassroomCurriculumData = json.data;
           setCurriculum(data);
 
-          // On initial load, set default subject, expanded chapter, and active viewport item
+          // On initial load, resolve selections prioritizing deep links, then lastActivity, then first subject/chapter
           if (isInitial && data.subjects && data.subjects.length > 0) {
-            let targetSubject = data.subjects[0];
-            let targetChapter: ClassroomChapter | null = targetSubject.chapters?.[0] || null;
+            let matchedSubject: ClassroomSubject | null = null;
+            let matchedChapter: ClassroomChapter | null = null;
+            let matchedTopic: TopicProgressItem | null = null;
+            let matchedVideo: SanitizedClassroomVideo | null = null;
+            let matchedDoc: SanitizedClassroomDocument | null = null;
 
-            // If lastActivity is available, resume from student's last accessed subject/chapter
-            if (data.lastActivity?.subjectId) {
-              const matchingSub = data.subjects.find(
-                (s) => s.subjectId === data.lastActivity!.subjectId
-              );
-              if (matchingSub) {
-                targetSubject = matchingSub;
-                if (data.lastActivity.chapterId) {
-                  const matchingChap = matchingSub.chapters.find(
-                    (c) => c.chapterId === data.lastActivity!.chapterId
-                  );
-                  if (matchingChap) {
-                    targetChapter = matchingChap;
+            // 1. Deep link: Topic ID
+            if (queryTopicId) {
+              for (const sub of data.subjects) {
+                for (const chap of sub.chapters || []) {
+                  const top = chap.topics?.find((t) => t.topicId === queryTopicId);
+                  if (top) {
+                    matchedSubject = sub;
+                    matchedChapter = chap;
+                    matchedTopic = top;
+                    break;
                   }
+                }
+                if (matchedTopic) break;
+              }
+            }
+
+            // 2. Deep link: Video ID
+            if (!matchedTopic && queryVideoId) {
+              for (const sub of data.subjects) {
+                for (const chap of sub.chapters || []) {
+                  const vid = chap.videos?.find((v) => v.id === queryVideoId);
+                  if (vid) {
+                    matchedSubject = sub;
+                    matchedChapter = chap;
+                    matchedVideo = vid;
+                    break;
+                  }
+                }
+                if (matchedVideo) break;
+              }
+            }
+
+            // 3. Deep link: Document ID
+            if (!matchedTopic && !matchedVideo && queryDocId) {
+              for (const sub of data.subjects) {
+                for (const chap of sub.chapters || []) {
+                  const doc = chap.documents?.find((d) => d.id === queryDocId);
+                  if (doc) {
+                    matchedSubject = sub;
+                    matchedChapter = chap;
+                    matchedDoc = doc;
+                    break;
+                  }
+                }
+                if (matchedDoc) break;
+              }
+            }
+
+            // 4. Deep link: Chapter ID
+            if (!matchedChapter && queryChapterId) {
+              for (const sub of data.subjects) {
+                const chap = sub.chapters?.find((c) => c.chapterId === queryChapterId);
+                if (chap) {
+                  matchedSubject = sub;
+                  matchedChapter = chap;
+                  break;
                 }
               }
             }
 
-            setSelectedSubjectId(targetSubject.subjectId);
-            if (targetChapter) {
-              setExpandedChapterIds(new Set([targetChapter.chapterId]));
-              setActiveChapter(targetChapter);
+            // 5. Deep link: Subject ID
+            if (!matchedSubject && querySubjectId) {
+              matchedSubject = data.subjects.find((s) => s.subjectId === querySubjectId) || null;
+              if (matchedSubject && matchedSubject.chapters?.length > 0) {
+                matchedChapter = matchedSubject.chapters[0];
+              }
+            }
 
-              // Set initial active item
-              if (targetChapter.topics && targetChapter.topics.length > 0) {
+            // 6. Last Activity from server
+            if (!matchedSubject && data.lastActivity?.subjectId) {
+              const actSub = data.subjects.find((s) => s.subjectId === data.lastActivity!.subjectId);
+              if (actSub) {
+                matchedSubject = actSub;
+                if (data.lastActivity.chapterId) {
+                  matchedChapter = actSub.chapters?.find((c) => c.chapterId === data.lastActivity!.chapterId) || null;
+                }
+              }
+            }
+
+            // 7. Default fallback: First subject & First chapter
+            if (!matchedSubject) {
+              matchedSubject = data.subjects[0];
+            }
+            if (!matchedChapter && matchedSubject.chapters && matchedSubject.chapters.length > 0) {
+              matchedChapter = matchedSubject.chapters[0];
+            }
+
+            setSelectedSubjectId(matchedSubject.subjectId);
+            if (matchedChapter) {
+              setExpandedChapterIds(new Set([matchedChapter.chapterId]));
+              setActiveChapter(matchedChapter);
+
+              if (matchedTopic) {
                 setContentType('TOPIC');
-                setActiveTopic(targetChapter.topics[0]);
-              } else if (targetChapter.videos && targetChapter.videos.length > 0) {
+                setActiveTopic(matchedTopic);
+                setActiveVideo(null);
+                setActiveDocument(null);
+              } else if (matchedVideo) {
                 setContentType('VIDEO');
-                setActiveVideo(targetChapter.videos[0]);
-              } else if (targetChapter.documents && targetChapter.documents.length > 0) {
+                setActiveVideo(matchedVideo);
+                setActiveTopic(null);
+                setActiveDocument(null);
+              } else if (matchedDoc) {
                 setContentType('DOCUMENT');
-                setActiveDocument(targetChapter.documents[0]);
+                setActiveDocument(matchedDoc);
+                setActiveTopic(null);
+                setActiveVideo(null);
+              } else if (matchedChapter.topics && matchedChapter.topics.length > 0) {
+                setContentType('TOPIC');
+                setActiveTopic(matchedChapter.topics[0]);
+                setActiveVideo(null);
+                setActiveDocument(null);
+              } else if (matchedChapter.videos && matchedChapter.videos.length > 0) {
+                setContentType('VIDEO');
+                setActiveVideo(matchedChapter.videos[0]);
+                setActiveTopic(null);
+                setActiveDocument(null);
+              } else if (matchedChapter.documents && matchedChapter.documents.length > 0) {
+                setContentType('DOCUMENT');
+                setActiveDocument(matchedChapter.documents[0]);
+                setActiveTopic(null);
+                setActiveVideo(null);
               }
             }
           }
@@ -206,7 +493,7 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
         if (isInitial) setLoading(false);
       }
     },
-    [courseId]
+    [courseId, querySubjectId, queryChapterId, queryTopicId, queryVideoId, queryDocId]
   );
 
   useEffect(() => {
@@ -292,6 +579,7 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
     setActiveChapter(chapter);
     setActionSuccessMessage(null);
     setActionErrorMessage(null);
+    setShowMobileSyllabus(false);
   };
 
   const handleSelectVideo = (video: SanitizedClassroomVideo, chapter: ClassroomChapter) => {
@@ -302,6 +590,7 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
     setActiveChapter(chapter);
     setActionSuccessMessage(null);
     setActionErrorMessage(null);
+    setShowMobileSyllabus(false);
   };
 
   const handleSelectDocument = (doc: SanitizedClassroomDocument, chapter: ClassroomChapter) => {
@@ -312,13 +601,13 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
     setActiveChapter(chapter);
     setActionSuccessMessage(null);
     setActionErrorMessage(null);
+    setShowMobileSyllabus(false);
   };
 
-  // Mark Topic Complete using authenticated Feature 3.4 API
+  // Mark Topic Complete using authenticated API
   const handleMarkTopicComplete = async (topicId: number) => {
     if (!curriculum || mutatingTopicId !== null) return;
 
-    // Check if already completed (prevent downgrade)
     const isAlreadyCompleted = activeTopic?.topicId === topicId && activeTopic.status === 'COMPLETED';
     if (isAlreadyCompleted) return;
 
@@ -345,7 +634,6 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
       if (res.ok && data.success) {
         setActionSuccessMessage('Topic marked as completed! Learning progress updated.');
 
-        // Update local active topic
         if (activeTopic && activeTopic.topicId === topicId) {
           setActiveTopic({
             ...activeTopic,
@@ -354,7 +642,6 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
           });
         }
 
-        // Silently reload authoritative curriculum from server to synchronize stats
         await loadCurriculum(false);
       } else {
         setActionErrorMessage(data.error || 'Failed to update topic progress.');
@@ -366,11 +653,10 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
     }
   };
 
-  // Mark Video Watched using authenticated Feature 3.4 API
+  // Mark Video Watched using authenticated API
   const handleMarkVideoComplete = async (videoId: number) => {
     if (!curriculum || mutatingVideoId !== null) return;
 
-    // Prevent downgrade if already completed
     const isAlreadyCompleted = activeVideo?.id === videoId && activeVideo.status === 'COMPLETED';
     if (isAlreadyCompleted) return;
 
@@ -417,21 +703,56 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
     }
   };
 
+  // Mark Document Completed using authenticated API
+  const handleMarkDocumentCompleted = async (docId: number) => {
+    if (!courseId || mutatingDocId !== null) return;
+    const isAlreadyCompleted = activeDocument?.id === docId && (activeDocument as any).status === 'COMPLETED';
+    if (isAlreadyCompleted) return;
+
+    setMutatingDocId(docId);
+    setActionSuccessMessage(null);
+    setActionErrorMessage(null);
+
+    try {
+      const csrfToken = getCsrfToken();
+      const res = await fetch('/api/student/progress/content', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({
+          courseId,
+          contentType: 'PDF',
+          contentIdentifier: String(docId),
+          status: 'COMPLETED',
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setActionSuccessMessage('Study material marked as completed! Progress updated.');
+        if (activeDocument && activeDocument.id === docId) {
+          setActiveDocument({
+            ...activeDocument,
+            status: 'COMPLETED',
+            completedAt: new Date().toISOString(),
+          });
+        }
+        await loadCurriculum(false);
+      } else {
+        setActionErrorMessage(data.error || 'Failed to record document progress.');
+      }
+    } catch (err) {
+      setActionErrorMessage('Network error while saving document progress.');
+    } finally {
+      setMutatingDocId(null);
+    }
+  };
+
   // 1. Loading State
   if (loading) {
-    return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
-        <div className="w-12 h-12 rounded-2xl bg-[#F6F4FF] border border-[#E7E3F5] flex items-center justify-center">
-          <Loader2 className="w-6 h-6 text-[#3F328A] animate-spin" />
-        </div>
-        <div>
-          <h3 className="text-base font-extrabold text-[#17152A]">Loading Classroom...</h3>
-          <p className="text-xs text-[#6E6990] mt-1">
-            Authorizing enrollment and retrieving course curriculum
-          </p>
-        </div>
-      </div>
-    );
+    return <ClassroomLoadingSkeleton />;
   }
 
   // 2. Error / Access Denied States
@@ -507,6 +828,54 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
     subjects.find((s) => s.subjectId === selectedSubjectId) || subjects[0];
   const currentChapters = currentSubject?.chapters || [];
 
+  // Reusable Lesson Navigation Footer Component
+  const renderLessonNavigationFooter = () => {
+    if (flatLessons.length <= 1) return null;
+    return (
+      <div className="flex items-center justify-between pt-6 border-t border-[#F1EFFB]">
+        {prevLesson ? (
+          <button
+            onClick={() => navigateToFlatLesson(prevLesson)}
+            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-[#3F328A] bg-[#F6F4FF] hover:bg-[#E7E3F5] transition"
+            title={prevLesson.title}
+          >
+            <ChevronLeft size={16} />
+            <div className="text-left">
+              <div className="text-[10px] text-[#6E6990] uppercase font-bold">Previous Lesson</div>
+              <div className="truncate max-w-[120px] sm:max-w-[180px] font-bold text-[#17152A]">
+                {prevLesson.title}
+              </div>
+            </div>
+          </button>
+        ) : (
+          <div />
+        )}
+
+        <span className="text-[11px] font-semibold text-[#6E6990] hidden sm:inline">
+          Lesson {currentLessonIndex >= 0 ? currentLessonIndex + 1 : 1} of {flatLessons.length}
+        </span>
+
+        {nextLesson ? (
+          <button
+            onClick={() => navigateToFlatLesson(nextLesson)}
+            className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-[#3F328A] hover:bg-[#2D246B] transition shadow-xs"
+            title={nextLesson.title}
+          >
+            <div className="text-right">
+              <div className="text-[10px] text-white/80 uppercase font-bold">Next Lesson</div>
+              <div className="truncate max-w-[120px] sm:max-w-[180px] font-bold text-white">
+                {nextLesson.title}
+              </div>
+            </div>
+            <ChevronRight size={16} />
+          </button>
+        ) : (
+          <div />
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* 1. TOP HEADER & METRIC SUMMARY */}
@@ -533,6 +902,15 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Mobile Syllabus Toggle Button */}
+            <button
+              onClick={() => setShowMobileSyllabus(!showMobileSyllabus)}
+              className="lg:hidden px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#F6F4FF] text-[#3F328A] border border-[#E7E3F5] flex items-center gap-1.5"
+            >
+              {showMobileSyllabus ? <X size={14} /> : <Menu size={14} />}
+              <span>{showMobileSyllabus ? 'Close Syllabus' : 'View Syllabus'}</span>
+            </button>
+
             <span className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#E8FAF0] text-[#16A34A] flex items-center gap-1.5 border border-[#C5F3D8]">
               <CheckCircle2 size={14} /> Enrolled &amp; Active
             </span>
@@ -725,6 +1103,14 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
                   </button>
 
                   <button
+                    onClick={() => openNoteModal()}
+                    className="px-4 py-2.5 rounded-xl bg-[#EEF2FF] hover:bg-[#E0E7FF] text-[#4F46E5] font-bold text-xs transition-colors flex items-center gap-1.5 shadow-xs"
+                  >
+                    <BookOpen size={15} />
+                    <span>Topic Notes</span>
+                  </button>
+
+                  <button
                     onClick={() => handleMarkTopicComplete(activeTopic.topicId)}
                     disabled={activeTopic.status === 'COMPLETED' || mutatingTopicId === activeTopic.topicId}
                     className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
@@ -811,6 +1197,9 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
                   ) : null}
                 </div>
               </div>
+
+              {/* Linear Lesson Navigation (Previous / Next Lesson) */}
+              {renderLessonNavigationFooter()}
             </div>
           )}
 
@@ -845,26 +1234,22 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
                     Video ID: {activeVideo.id} • Scheduled for faculty upload
                   </p>
                 </div>
-              ) : videoPlaybackConfig?.provider && videoPlaybackConfig.provider.toLowerCase() !== 'vimeo' ? (
-                <div className="w-full aspect-[16/9] bg-[#17152A] rounded-2xl flex flex-col items-center justify-center text-white p-6 sm:p-8 text-center space-y-3 border border-[#2D246B]">
-                  <div className="p-3.5 rounded-2xl bg-[#2D246B] text-[#FF3F68]">
-                    <Video size={36} />
-                  </div>
-                  <h4 className="font-extrabold text-base sm:text-lg">
-                    External Stream Notice ({String(videoPlaybackConfig.provider).toUpperCase()})
-                  </h4>
-                  <p className="text-xs text-white/70 max-w-lg leading-relaxed">
-                    The student classroom player currently officially supports Vimeo playback. This lecture is configured with an external stream format ({String(videoPlaybackConfig.provider).toUpperCase()}) which cannot be played directly in this classroom player.
-                  </p>
-                  <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-[11px] text-white/60 max-w-md">
-                    Lecture ID: #{activeVideo.id} • Please contact course administration for access or updates.
-                  </div>
-                </div>
-              ) : videoPlaybackConfig?.vimeoVideoId ? (
-                <VimeoPlayer
+              ) : videoPlaybackConfig ? (
+                <UniversalVideoPlayer
                   key={activeVideo.id}
-                  videoId={videoPlaybackConfig.vimeoVideoId}
+                  provider={videoPlaybackConfig.provider}
+                  videoId={videoPlaybackConfig.providerVideoId || videoPlaybackConfig.vimeoVideoId}
+                  videoUrl={videoPlaybackConfig.videoUrl}
                   title={activeVideo.title}
+                  initialTime={videoPlaybackConfig.initialTime || 0}
+                  onProgress={(percent) => {
+                    if (percent >= 90 && activeVideo.status !== 'COMPLETED') {
+                      handleMarkVideoComplete(activeVideo.id);
+                    }
+                  }}
+                  onEnded={() => {
+                    handleMarkVideoComplete(activeVideo.id);
+                  }}
                 />
               ) : (
                 <div className="w-full aspect-[16/9] bg-[#17152A] rounded-2xl flex flex-col items-center justify-center text-white p-6 text-center space-y-2">
@@ -897,6 +1282,11 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
                           Free Preview
                         </span>
                       )}
+                      {activeVideo.status === 'COMPLETED' && (
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px] flex items-center gap-1">
+                          <Check size={10} /> Watched
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -907,6 +1297,14 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
                     >
                       <HelpCircle size={15} />
                       <span>Ask Faculty Doubt</span>
+                    </button>
+
+                    <button
+                      onClick={() => openNoteModal({ videoId: activeVideo.id, videoTitle: activeVideo.title })}
+                      className="px-4 py-2.5 rounded-xl bg-[#EEF2FF] hover:bg-[#E0E7FF] text-[#4F46E5] font-bold text-xs transition-colors flex items-center gap-1.5 shadow-xs"
+                    >
+                      <BookOpen size={15} />
+                      <span>Add Video Note</span>
                     </button>
 
                     <button
@@ -937,85 +1335,106 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
                     </button>
                   </div>
                 </div>
+
+                {/* Linear Lesson Navigation (Previous / Next Lesson) */}
+                {renderLessonNavigationFooter()}
               </div>
             </div>
           )}
 
           {/* VIEWPORT C: DOCUMENT / STUDY MATERIAL WORKSPACE */}
           {contentType === 'DOCUMENT' && activeDocument && (
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E7E3F5] shadow-xs space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#F1EFFB]">
-                <div className="flex items-start gap-4">
-                  <div className="p-3.5 rounded-2xl bg-[#F0EDFD] text-[#3F328A]">
-                    <FileText size={28} />
+            <div className="space-y-4">
+              <SecurePdfViewer
+                documentId={activeDocument.id}
+                title={activeDocument.title}
+                category={activeDocument.category}
+                fileSizeBytes={activeDocument.fileSizeBytes}
+                pageCount={activeDocument.pageCount}
+                streamUrl={`/api/student/classroom/${courseId}/document/${activeDocument.id}`}
+                allowDownload={activeDocument.allowDownload !== false}
+                studentName="Enrolled Student"
+                courseTitle={curriculum?.courseTitle || '10Q Challenge LMS'}
+              />
+
+              {/* Progress & Chapter Context Card */}
+              <div className="bg-white rounded-2xl p-5 border border-[#E7E3F5] shadow-xs flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-purple-50 text-purple-700">
+                    <FileCheck className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="text-[11px] font-bold text-[#3F328A] uppercase tracking-wider">
-                      Study Material &amp; Formula Book
-                    </span>
-                    <h2 className="text-xl sm:text-2xl font-black text-[#17152A] mt-0.5">
+                    <h4 className="text-sm font-bold text-gray-900">
                       {activeDocument.title}
-                    </h2>
-                    <div className="flex items-center gap-3 text-xs text-[#6E6990] mt-1.5 font-medium">
-                      <span>📄 Format: {activeDocument.fileType}</span>
-                      <span>•</span>
-                      <span>📦 {activeDocument.fileSizeBytes || '2.4 MB'}</span>
-                      <span>•</span>
-                      <span>🔒 Enrolled Student Material</span>
-                    </div>
+                    </h4>
+                    <p className="text-xs text-gray-500">
+                      Chapter: {activeChapter?.chapterName || 'Curriculum'} • Format: PDF
+                    </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="px-3.5 py-2 rounded-xl bg-[#F6F4FF] text-[#6E6990] text-xs font-bold border border-[#E7E3F5] flex items-center gap-1.5">
-                    <Clock size={14} />
-                    <span>Upload Pending</span>
-                  </span>
+                  <button
+                    onClick={() => setIsDoubtModalOpen(true)}
+                    className="px-4 py-2 rounded-xl bg-[#FFE8ED] hover:bg-[#FFCCD6] text-[#FF3F68] font-bold text-xs transition-colors flex items-center gap-1.5 shadow-xs"
+                  >
+                    <HelpCircle size={14} />
+                    <span>Ask Doubt</span>
+                  </button>
+                  <button
+                    onClick={() => openNoteModal({ documentId: activeDocument.id, documentTitle: activeDocument.title })}
+                    className="px-4 py-2 rounded-xl bg-[#EEF2FF] hover:bg-[#E0E7FF] text-[#4F46E5] font-bold text-xs transition-colors flex items-center gap-1.5 shadow-xs"
+                  >
+                    <BookOpen size={14} />
+                    <span>Study Note</span>
+                  </button>
+                  <button
+                    onClick={() => handleMarkDocumentCompleted(activeDocument.id)}
+                    disabled={mutatingDocId === activeDocument.id}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Mark as Read / Completed</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Critical PDF Restriction: Honest "Study Material Coming Soon" Banner */}
-              <div className="border border-[#E7E3F5] rounded-2xl p-8 bg-[#FAFAFD] text-center space-y-4">
-                <div className="w-16 h-16 rounded-2xl bg-white border border-[#E7E3F5] flex items-center justify-center mx-auto text-[#3F328A]">
-                  <BookOpen size={32} />
-                </div>
-                <div className="space-y-1.5 max-w-md mx-auto">
-                  <h4 className="font-extrabold text-base text-[#17152A]">
-                    Study Material Coming Soon
-                  </h4>
-                  <p className="text-xs text-[#6E6990] leading-relaxed">
-                    Faculty is currently preparing the high-yield study material, formula handbook, and revision notes for this chapter. Authentic vector PDFs will be available directly in your classroom once published.
-                  </p>
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    disabled
-                    className="px-5 py-2.5 rounded-xl bg-[#E7E3F5] text-[#8C88AB] font-bold text-xs cursor-not-allowed inline-flex items-center gap-2"
-                  >
-                    <Lock size={14} />
-                    <span>PDF Download Available Upon Release</span>
-                  </button>
-                </div>
+              {/* Linear Lesson Navigation (Previous / Next Lesson) */}
+              <div className="bg-white rounded-2xl p-5 border border-[#E7E3F5] shadow-xs">
+                {renderLessonNavigationFooter()}
               </div>
             </div>
           )}
         </div>
 
         {/* RIGHT COLUMN: Curriculum Navigation Tree (lg:col-span-4) */}
-        <div className="lg:col-span-4 bg-white rounded-3xl border border-[#E7E3F5] shadow-sm overflow-hidden sticky top-24 space-y-0">
-          <div className="p-5 border-b border-[#F1EFFB] bg-[#FAFAFD]">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-[#3F328A] uppercase tracking-wider">
-                {currentSubject?.subjectName}
-              </span>
-              <span className="text-xs font-bold text-[#6E6990]">
-                {currentChapters.length} Chapters
-              </span>
+        <div
+          className={`lg:col-span-4 bg-white rounded-3xl border border-[#E7E3F5] shadow-sm overflow-hidden sticky top-24 space-y-0 ${
+            showMobileSyllabus ? 'block fixed inset-x-4 top-20 z-50 max-h-[80vh] overflow-y-auto' : 'hidden lg:block'
+          }`}
+        >
+          <div className="p-5 border-b border-[#F1EFFB] bg-[#FAFAFD] flex items-center justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-[#3F328A] uppercase tracking-wider">
+                  {currentSubject?.subjectName}
+                </span>
+                <span className="text-xs font-bold text-[#6E6990] ml-3">
+                  {currentChapters.length} Chapters
+                </span>
+              </div>
+              <h3 className="font-black text-base text-[#17152A] mt-1">
+                Course Syllabus
+              </h3>
             </div>
-            <h3 className="font-black text-base text-[#17152A] mt-1">
-              Course Syllabus
-            </h3>
+            {showMobileSyllabus && (
+              <button
+                onClick={() => setShowMobileSyllabus(false)}
+                className="lg:hidden p-2 rounded-xl bg-white border border-[#E7E3F5] text-[#6E6990]"
+              >
+                <X size={16} />
+              </button>
+            )}
           </div>
 
           <div className="divide-y divide-[#F1EFFB] max-h-[680px] overflow-y-auto">
@@ -1153,6 +1572,7 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
                         {chapDocs.map((doc) => {
                           const isSelected =
                             contentType === 'DOCUMENT' && activeDocument?.id === doc.id;
+                          const isDone = (doc as any).status === 'COMPLETED';
 
                           return (
                             <button
@@ -1172,15 +1592,23 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
                                 <span className="truncate">{doc.title}</span>
                               </div>
 
-                              <span
-                                className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
-                                  isSelected
-                                    ? 'bg-white/20 text-white'
-                                    : 'bg-[#F0EDFD] text-[#3F328A]'
-                                }`}
-                              >
-                                NOTES
-                              </span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isDone && (
+                                  <CheckCircle2
+                                    size={14}
+                                    className={isSelected ? 'text-white' : 'text-[#16A34A]'}
+                                  />
+                                )}
+                                <span
+                                  className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                                    isSelected
+                                      ? 'bg-white/20 text-white'
+                                      : 'bg-[#F0EDFD] text-[#3F328A]'
+                                  }`}
+                                >
+                                  NOTES
+                                </span>
+                              </div>
                             </button>
                           );
                         })}
@@ -1200,8 +1628,31 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
         onClose={() => setIsDoubtModalOpen(false)}
         courseId={courseId}
         courseTitle={curriculum.courseTitle}
-        lessonTitle={activeTopic?.topicName || activeVideo?.title || 'General Curriculum Question'}
+        subjectId={selectedSubjectId || undefined}
+        subjectName={currentSubject?.subjectName}
+        chapterId={activeChapter?.chapterId}
+        chapterName={activeChapter?.chapterName}
+        topicId={activeTopic?.topicId}
+        topicName={activeTopic?.topicName}
+        lessonId={activeVideo?.id}
+        lessonTitle={activeTopic?.topicName || activeVideo?.title || activeDocument?.title || 'General Curriculum Question'}
+        documentId={activeDocument?.id}
+      />
+
+      {/* Student Study Note Modal */}
+      <NoteModal
+        isOpen={isNoteModalOpen}
+        onClose={() => setIsNoteModalOpen(false)}
+        context={noteModalContext}
       />
     </div>
+  );
+}
+
+export default function ClassroomPage(props: ClassroomPageProps) {
+  return (
+    <Suspense fallback={<ClassroomLoadingSkeleton />}>
+      <ClassroomPageContent {...props} />
+    </Suspense>
   );
 }

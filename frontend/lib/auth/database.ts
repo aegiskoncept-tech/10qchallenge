@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { createRequire } from 'module';
+import { assertSafeDatabaseTarget } from '../db-guard';
 
 export interface UserEntity {
   id: number;
@@ -66,14 +67,30 @@ function getSqliteDb() {
     }
   }
   
-  // Establish database directory in project root / database / 10q_auth_dev.db
-  const cwd = process.cwd();
-  const baseDir = process.env.DATA_STORE_DIR || cwd;
-  const dbDir = path.join(baseDir, 'database');
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+  // Establish database directory in project root / database / 10q_auth_dev.db or isolated test target
+  const isIsolatedMode = process.env.TEST_DATABASE_MODE === 'isolated';
+  let dbPath: string;
+
+  if (isIsolatedMode) {
+    const testSqlitePath = process.env.TEST_SQLITE_PATH;
+    if (!testSqlitePath) {
+      throw new Error('[FAIL-CLOSED DB GUARD] TEST_DATABASE_MODE=isolated requires TEST_SQLITE_PATH to be specified.');
+    }
+    assertSafeDatabaseTarget(testSqlitePath, 'sqlite');
+    dbPath = path.resolve(testSqlitePath);
+    const dbDir = path.dirname(dbPath);
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+  } else {
+    const cwd = process.cwd();
+    const baseDir = process.env.DATA_STORE_DIR || cwd;
+    const dbDir = path.join(baseDir, 'database');
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+    dbPath = path.join(dbDir, '10q_auth_dev.db');
   }
-  const dbPath = path.join(dbDir, '10q_auth_dev.db');
 
   const db = new DatabaseSync(dbPath);
 
@@ -454,3 +471,12 @@ export const AuthDb = {
     db.prepare('DELETE FROM rate_limits WHERE key = ?').run(key);
   },
 };
+
+export function closeSqliteDb(): void {
+  if (sqliteDbInstance) {
+    try {
+      sqliteDbInstance.close();
+    } catch (_) {}
+    sqliteDbInstance = null;
+  }
+}

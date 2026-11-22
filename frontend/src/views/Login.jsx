@@ -38,7 +38,19 @@ export default function Login() {
       }
 
       const userRole = res.user?.role;
-      const targetRoute = fromEnroll ? '/cart' : (userRole === 'ADMIN' ? '/admin' : '/student/dashboard');
+      let targetRoute;
+      const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      const redirectParam = searchParams ? searchParams.get('redirect') : null;
+
+      if (fromEnroll) {
+        targetRoute = '/cart';
+      } else if (redirectParam && redirectParam.startsWith('/admin') && userRole === 'ADMIN') {
+        targetRoute = redirectParam;
+      } else if (redirectParam && redirectParam.startsWith('/student') && userRole !== 'ADMIN') {
+        targetRoute = redirectParam;
+      } else {
+        targetRoute = userRole === 'ADMIN' ? '/admin' : '/student/dashboard';
+      }
       navigate(targetRoute);
     } catch (err) {
       setIsLoading(false);
