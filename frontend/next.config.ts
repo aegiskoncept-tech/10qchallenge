@@ -1,19 +1,22 @@
-import path from "path";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
+
+const projectRoot = fileURLToPath(new URL(".", import.meta.url));
 
 const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   output: "standalone",
-  outputFileTracingRoot: path.resolve(__dirname),
+  outputFileTracingRoot: path.resolve(projectRoot),
   serverExternalPackages: ["node:sqlite", "@electric-sql/pglite", "pg"],
   webpack: (config) => {
     config.resolve = config.resolve || {};
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
-      '@': path.resolve(__dirname),
-      '@/src': path.resolve(__dirname, 'src'),
-      '@/components': path.resolve(__dirname, 'components'),
-      '@/lib': path.resolve(__dirname, 'lib'),
+      '@': path.resolve(projectRoot),
+      '@/src': path.resolve(projectRoot, 'src'),
+      '@/components': path.resolve(projectRoot, 'components'),
+      '@/lib': path.resolve(projectRoot, 'lib'),
     };
     return config;
   },
