@@ -22,6 +22,7 @@
         "name": "next"
       }
     ],
+    "baseUrl": ".",
     "paths": {
       "@/*": [
         "./*"
@@ -32,13 +33,12 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
+    "**/*.js",
+    "**/*.jsx",
+    "**/*.mjs",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts",
-    "../isolated_acceptance_env/.next_isolated/types/**/*.ts",
-    "../isolated_acceptance_env/.next_isolated/dev/types/**/*.ts",
-    ".next_prod_verify/types/**/*.ts",
-    ".next_prod_verify/dev/types/**/*.ts"
+    "**/*.mts"
   ],
   "exclude": [
     "node_modules"
