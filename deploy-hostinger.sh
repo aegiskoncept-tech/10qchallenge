@@ -26,7 +26,7 @@ fi
 
 # Step 3: Install root and frontend dependencies
 echo "📦 Installing npm dependencies..."
-npm install --production=false
+npm install --include=dev
 
 # Step 4: Build Next.js production bundle
 echo "🔨 Building Next.js production bundle..."

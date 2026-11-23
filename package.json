@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "postinstall": "cd frontend && npm install",
+    "postinstall": "cd frontend && npm install --include=dev",
     "build": "cd frontend && npm run build && cd .. && node scripts/sync-build.js",
     "postbuild": "node scripts/sync-build.js",
     "start": "node server.js",
@@ -14,6 +14,7 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.5.16",
     "@next/swc-wasm-nodejs": "^16.4.4",
+    "@tailwindcss/postcss": "^4",
     "@types/pg": "^8.23.1",
     "@vimeo/player": "^2.30.4",
     "canvas-confetti": "^1.9.4",
@@ -27,10 +28,10 @@
     "react-dom": "19.2.8",
     "react-icons": "^5.7.0",
     "swiper": "^14.3.0",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
     "@types/canvas-confetti": "^1.9.0",
     "@types/katex": "^0.16.8",
     "@types/node": "^20",
@@ -39,7 +40,6 @@
     "@types/vimeo__player": "^2.18.3",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
-    "tailwindcss": "^4",
     "typescript": "^5"
   },
   "overrides": {
