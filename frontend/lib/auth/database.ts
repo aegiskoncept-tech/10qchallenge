@@ -48,6 +48,7 @@ export interface RateLimitEntity {
 
 // Global reference for database singleton
 let sqliteDbInstance: any = null;
+let hasLoggedStartup = false;
 
 function getSqliteDb() {
   if (sqliteDbInstance) return sqliteDbInstance;
@@ -80,19 +81,74 @@ function getSqliteDb() {
     dbPath = path.resolve(testSqlitePath);
     const dbDir = path.dirname(dbPath);
     if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true });
+      fs.mkdirSync(dbDir, { recursive: true, mode: 0o750 });
     }
   } else {
-    const cwd = process.cwd();
-    const baseDir = process.env.DATA_STORE_DIR || cwd;
-    const dbDir = path.join(baseDir, 'database');
-    if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true });
+    const isProduction = process.env.NODE_ENV === 'production';
+    const dataStoreDir = process.env.DATA_STORE_DIR?.trim();
+
+    // In production, DATA_STORE_DIR is strictly mandatory to prevent ephemeral database resets
+    if (isProduction && !dataStoreDir) {
+      throw new Error(
+        '[FAIL-CLOSED PERSISTENT STORAGE GUARD] DATA_STORE_DIR environment variable is mandatory in production. ' +
+        'It must point to a persistent directory outside the application deployment workspace ' +
+        'to prevent database recreation and data loss across deployments. (e.g., DATA_STORE_DIR=/home/uXXXXXXX/persistent_data)'
+      );
     }
+
+    const baseDir = dataStoreDir ? path.resolve(dataStoreDir) : process.cwd();
+    const dbDir = path.join(baseDir, 'database');
+
+    // Create database directory recursively when necessary
+    if (!fs.existsSync(dbDir)) {
+      try {
+        fs.mkdirSync(dbDir, { recursive: true, mode: 0o750 });
+      } catch (mkdirErr: any) {
+        throw new Error(`[FAIL-CLOSED PERSISTENT STORAGE GUARD] Failed to create database directory '${dbDir}': ${mkdirErr.message}`);
+      }
+    }
+
+    // Verify directory permissions and write access
+    try {
+      fs.accessSync(dbDir, fs.constants.R_OK | fs.constants.W_OK);
+    } catch (accessErr: any) {
+      throw new Error(`[FAIL-CLOSED PERSISTENT STORAGE GUARD] Database directory '${dbDir}' is not readable/writable: ${accessErr.message}`);
+    }
+
     dbPath = path.join(dbDir, '10q_auth_dev.db');
+
+    // Verify existing database file permissions, or test write capability in directory if creating new
+    if (fs.existsSync(dbPath)) {
+      try {
+        fs.accessSync(dbPath, fs.constants.R_OK | fs.constants.W_OK);
+      } catch (fileErr: any) {
+        throw new Error(`[FAIL-CLOSED PERSISTENT STORAGE GUARD] Database file '${dbPath}' exists but is not readable/writable: ${fileErr.message}`);
+      }
+    } else {
+      try {
+        const probeFile = path.join(dbDir, `.probe_write_${Date.now()}_${process.pid}`);
+        fs.writeFileSync(probeFile, 'ok', { flag: 'wx' });
+        fs.unlinkSync(probeFile);
+      } catch (probeErr: any) {
+        throw new Error(`[FAIL-CLOSED PERSISTENT STORAGE GUARD] Cannot create files in database directory '${dbDir}': ${probeErr.message}`);
+      }
+    }
+
+    // Safe startup validation reporting resolved path without exposing credentials or secrets
+    if (!hasLoggedStartup) {
+      const persistenceType = dataStoreDir ? 'External Persistent Directory' : 'Local Workspace (Development Mode)';
+      console.log(`[AUTH-DB-INITIALIZED] SQLite database active at: ${dbPath} (${persistenceType})`);
+      hasLoggedStartup = true;
+    }
   }
 
   const db = new DatabaseSync(dbPath);
+
+  // Enable WAL and foreign keys for concurrency and integrity
+  db.exec(`
+    PRAGMA foreign_keys = ON;
+    PRAGMA busy_timeout = 5000;
+  `);
 
   // Initialize relational tables matching Prisma schema specifications
   db.exec(`
@@ -194,6 +250,22 @@ export const AuthDb = {
 
   getDb(): any {
     return getSqliteDb();
+  },
+
+  getDatabaseInfo(): { dbPath: string; isPersistent: boolean; exists: boolean } {
+    const isIsolatedMode = process.env.TEST_DATABASE_MODE === 'isolated';
+    if (isIsolatedMode) {
+      const p = process.env.TEST_SQLITE_PATH ? path.resolve(process.env.TEST_SQLITE_PATH) : '';
+      return { dbPath: p, isPersistent: false, exists: fs.existsSync(p) };
+    }
+    const dataStoreDir = process.env.DATA_STORE_DIR?.trim();
+    const baseDir = dataStoreDir ? path.resolve(dataStoreDir) : process.cwd();
+    const resolvedPath = path.join(baseDir, 'database', '10q_auth_dev.db');
+    return {
+      dbPath: resolvedPath,
+      isPersistent: Boolean(dataStoreDir),
+      exists: fs.existsSync(resolvedPath),
+    };
   },
 
   listUsers(options?: {
