@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { CourseMasterCatalogue } from '@/components/admin/CourseMasterCatalogue';
 import { CourseRecord } from '@/lib/db/courses';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 function AdminCoursesContent() {
   const router = useRouter();
@@ -30,7 +31,7 @@ function AdminCoursesContent() {
 
   const fetchCourses = async () => {
     try {
-      const res = await fetch('/api/admin/courses');
+      const res = await apiClient('/api/admin/courses');
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {

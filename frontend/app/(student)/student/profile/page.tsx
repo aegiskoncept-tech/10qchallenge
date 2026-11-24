@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiClient } from '@/lib/apiClient';
 import {
   User,
   Mail,
@@ -43,12 +44,6 @@ const CANONICAL_EXAMS = [
   { value: 'VITEEE', label: 'VITEEE 2026' },
 ];
 
-function getCsrfTokenFromCookie(): string {
-  if (typeof document === 'undefined') return '';
-  const match = document.cookie.match(/(?:^|;\s*)10q_csrf_token=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : '';
-}
-
 export default function StudentProfilePage() {
   const { user: authUser, refreshUser } = useAuth();
 
@@ -72,7 +67,7 @@ export default function StudentProfilePage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/student/profile', {
+      const res = await apiClient('/api/student/profile', {
         method: 'GET',
         cache: 'no-store',
       });
@@ -158,8 +153,6 @@ export default function StudentProfilePage() {
     setError(null);
     setSuccessMessage(null);
 
-    const csrfToken = getCsrfTokenFromCookie();
-
     try {
       const payload: {
         fullName: string;
@@ -171,11 +164,10 @@ export default function StudentProfilePage() {
         targetExam: formData.targetExam,
       };
 
-      const res = await fetch('/api/student/profile', {
+      const res = await apiClient('/api/student/profile', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-csrf-token': csrfToken,
         },
         body: JSON.stringify(payload),
       });

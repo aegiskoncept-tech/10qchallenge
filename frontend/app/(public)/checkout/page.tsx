@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiClient } from '@/lib/apiClient';
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -96,7 +97,7 @@ export default function CheckoutPage() {
     setIsValidatingCoupon(true);
 
     try {
-      const res = await fetch('/api/coupons/validate', {
+      const res = await apiClient('/api/coupons/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -143,7 +144,7 @@ export default function CheckoutPage() {
       const stateCode = STATE_CODE_MAP[formData.state] || 'KA';
 
       // 1. Server-Side Order & Payment Attempt Creation
-      const res = await fetch('/api/checkout/create-order', {
+      const res = await apiClient('/api/checkout/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

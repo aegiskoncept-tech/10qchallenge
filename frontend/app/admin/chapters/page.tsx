@@ -17,6 +17,7 @@ import {
   Filter,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface Chapter {
   id: number;
@@ -86,9 +87,9 @@ export default function AdminChaptersPage() {
     setIsLoading(true);
     try {
       const [chapRes, courseRes, subjRes] = await Promise.all([
-        fetch('/api/admin/chapters'),
-        fetch('/api/admin/courses'),
-        fetch('/api/admin/subjects'),
+        apiClient('/api/admin/chapters'),
+        apiClient('/api/admin/courses'),
+        apiClient('/api/admin/subjects'),
       ]);
 
       if (chapRes.ok) {
@@ -180,7 +181,7 @@ export default function AdminChaptersPage() {
         : '/api/admin/chapters';
       const method = editingChapter ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
+      const res = await apiClient(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -204,7 +205,7 @@ export default function AdminChaptersPage() {
     setIsDeleting(true);
     setDeleteError(null);
     try {
-      const res = await fetch(`/api/admin/chapters/${id}`, {
+      const res = await apiClient(`/api/admin/chapters/${id}`, {
         method: 'DELETE',
       });
       const json = await res.json();

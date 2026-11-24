@@ -17,6 +17,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface PlatformSettings {
   platformName: string;
@@ -59,7 +60,7 @@ export default function PlatformSettingsPage() {
     setIsLoading(true);
     setSaveError(null);
     try {
-      const res = await fetch('/api/admin/settings');
+      const res = await apiClient('/api/admin/settings');
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.data) {
@@ -89,7 +90,7 @@ export default function PlatformSettingsPage() {
     setSaveSuccess(false);
 
     try {
-      const res = await fetch('/api/admin/settings', {
+      const res = await apiClient('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),

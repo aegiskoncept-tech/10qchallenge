@@ -1,13 +1,8 @@
 // 10Q Challenge Central API Service Module
 // Connects React Frontend with Node.js / C# Backend APIs
+import { apiClient } from '@/lib/apiClient';
 
 const API_BASE_URL = '/api';
-
-function getCsrfTokenFromCookie() {
-  if (typeof document === 'undefined') return '';
-  const match = document.cookie.match(/(?:^|; )10q_csrf_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : '';
-}
 
 async function fetchAPI(endpoint, method = 'POST', body = null) {
   try {
@@ -15,22 +10,16 @@ async function fetchAPI(endpoint, method = 'POST', body = null) {
       'Content-Type': 'application/json',
     };
 
-    const csrfToken = getCsrfTokenFromCookie();
-    if (csrfToken && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase())) {
-      headers['x-csrf-token'] = csrfToken;
-    }
-
     const options = {
       method,
       headers,
-      credentials: 'same-origin',
     };
 
     if (body) {
       options.body = JSON.stringify(body);
     }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+    const response = await apiClient(`${API_BASE_URL}${endpoint}`, options);
     if (!response.ok) {
       const errJson = await response.json().catch(() => null);
       throw new Error(errJson?.error || `API Error: ${response.statusText}`);
@@ -56,7 +45,7 @@ export const apiGetCourseDetail = async (id) => {
 // 2. MASTER BLOGS API
 export const apiGetBlogs = async () => {
   try {
-    const res = await fetch('/api/blogs');
+    const res = await apiClient('/api/blogs');
     if (res.ok) {
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) return { data: json.data };
@@ -68,7 +57,7 @@ export const apiGetBlogs = async () => {
 export const apiGetBlogBySlugOrId = async ({ id, slug }) => {
   try {
     const target = slug || id;
-    const res = await fetch(`/api/blogs/${target}`);
+    const res = await apiClient(`/api/blogs/${target}`);
     if (res.ok) {
       const json = await res.json();
       if (json.success && json.data) return { data: [json.data] };

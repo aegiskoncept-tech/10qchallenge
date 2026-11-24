@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
 import { MathText } from '@/components/student/MathText';
+import { apiClient } from '@/lib/apiClient';
 
 export type QuestionPaletteState =
   | 'not_visited'
@@ -104,12 +105,6 @@ interface AttemptSessionPageProps {
   params: Promise<{ attemptId: string }>;
 }
 
-function getCsrfTokenFromCookie(): string {
-  if (typeof document === 'undefined') return '';
-  const match = document.cookie.match(/(?:^|; )10q_csrf_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : '';
-}
-
 export default function AttemptSessionPage({ params }: AttemptSessionPageProps) {
   const router = useRouter();
   const resolvedParams = use(params);
@@ -159,16 +154,14 @@ export default function AttemptSessionPage({ params }: AttemptSessionPageProps) 
       }
 
       setIsSubmitting(true);
-      const csrfToken = getCsrfTokenFromCookie();
 
       try {
-        const res = await fetch(
+        const res = await apiClient(
           `/api/student/tests/attempts/${encodeURIComponent(attemptId)}/submit`,
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
             },
             body: JSON.stringify({ submissionReason: reason }),
           }
@@ -204,16 +197,13 @@ export default function AttemptSessionPage({ params }: AttemptSessionPageProps) 
       setSaveStatus('saving');
       setSaveError(null);
 
-      const csrfToken = getCsrfTokenFromCookie();
-
       try {
-        const res = await fetch(
+        const res = await apiClient(
           `/api/student/tests/attempts/${encodeURIComponent(attemptId)}/answers`,
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
             },
             body: JSON.stringify(payload),
           }

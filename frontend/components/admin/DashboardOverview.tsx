@@ -28,6 +28,7 @@ import {
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/Card';
 import { Badge } from './ui/Badge';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiClient } from '@/lib/apiClient';
 
 interface OverviewCounts {
   courses: number;
@@ -53,7 +54,7 @@ export const DashboardOverview: React.FC = () => {
   useEffect(() => {
     async function loadStats() {
       try {
-        const res = await fetch('/api/admin/overview');
+        const res = await apiClient('/api/admin/overview');
         if (res.ok) {
           const json = await res.json();
           if (json.success && json.data?.counts) {

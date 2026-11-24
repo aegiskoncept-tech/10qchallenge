@@ -4,6 +4,7 @@ import React, { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { CourseFormPanel, CourseFormData } from '@/components/admin/CourseFormPanel';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface EditCoursePageProps {
   params: Promise<{ id: string }>;
@@ -28,8 +29,8 @@ export default function EditCoursePage({ params }: EditCoursePageProps) {
     const fetchCourse = async () => {
       try {
         const [courseRes, subjectsRes] = await Promise.all([
-          fetch(`/api/admin/courses/${courseId}`),
-          fetch(`/api/admin/courses/${courseId}/subjects`),
+          apiClient(`/api/admin/courses/${courseId}`),
+          apiClient(`/api/admin/courses/${courseId}/subjects`),
         ]);
 
         if (!courseRes.ok) {
@@ -66,7 +67,7 @@ export default function EditCoursePage({ params }: EditCoursePageProps) {
   }, [courseId]);
 
   const handleSave = async (formData: CourseFormData) => {
-    const res = await fetch(`/api/admin/courses/${courseId}`, {
+    const res = await apiClient(`/api/admin/courses/${courseId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -90,7 +91,7 @@ export default function EditCoursePage({ params }: EditCoursePageProps) {
   };
 
   const handleDelete = async (id: number) => {
-    const res = await fetch(`/api/admin/courses/${id}`, {
+    const res = await apiClient(`/api/admin/courses/${id}`, {
       method: 'DELETE',
     });
 

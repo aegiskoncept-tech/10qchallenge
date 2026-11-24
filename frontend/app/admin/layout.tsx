@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { AdminShell } from '@/components/admin/AdminShell';
+import { primeCsrfToken } from '@/lib/apiClient';
 
 export default function AdminLayout({
   children,
@@ -16,6 +17,7 @@ export default function AdminLayout({
   const { user, isAuthenticated, isAdmin, isLoading } = useAuth();
 
   useEffect(() => {
+    primeCsrfToken();
     if (!isLoading && !isAuthenticated) {
       router.push('/login?redirect=/admin');
     }

@@ -19,6 +19,7 @@ import {
   Check,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface Coupon {
   id: number;
@@ -69,7 +70,7 @@ export default function AdminCouponsPage() {
   const fetchCoupons = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/coupons');
+      const res = await apiClient('/api/admin/coupons');
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) setCoupons(j.data);
@@ -158,7 +159,7 @@ export default function AdminCouponsPage() {
         : '/api/admin/coupons';
       const method = editingCoupon ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
+      const res = await apiClient(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -182,7 +183,7 @@ export default function AdminCouponsPage() {
     setIsDeleting(true);
     setDeleteError(null);
     try {
-      const res = await fetch(`/api/admin/coupons/${id}`, {
+      const res = await apiClient(`/api/admin/coupons/${id}`, {
         method: 'DELETE',
       });
       const json = await res.json();

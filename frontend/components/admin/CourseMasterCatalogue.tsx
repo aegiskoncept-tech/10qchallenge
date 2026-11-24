@@ -24,6 +24,7 @@ import {
   RefreshCw,
   MoreVertical,
 } from 'lucide-react';
+import { apiClient } from '@/lib/apiClient';
 import { CourseRecord } from '@/lib/db/courses';
 import { PageHeader } from './ui/PageHeader';
 import { PrimaryButton, SecondaryButton } from './ui/Buttons';
@@ -97,7 +98,7 @@ export const CourseMasterCatalogue: React.FC<CourseMasterCatalogueProps> = ({
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const res = await fetch(`/api/admin/courses/${course.id}`, {
+      const res = await apiClient(`/api/admin/courses/${course.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -129,7 +130,7 @@ export const CourseMasterCatalogue: React.FC<CourseMasterCatalogueProps> = ({
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const res = await fetch(`/api/admin/courses/${course.id}`, {
+      const res = await apiClient(`/api/admin/courses/${course.id}`, {
         method: 'DELETE',
       });
       const json = await res.json();

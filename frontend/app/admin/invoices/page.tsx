@@ -18,6 +18,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { InvoiceEntity } from '@/lib/commerce/types';
+import { apiClient } from '@/lib/apiClient';
 
 export default function AdminInvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceEntity[]>([]);
@@ -45,7 +46,7 @@ export default function AdminInvoicesPage() {
       q.set('page', String(page));
       q.set('limit', '20');
 
-      const res = await fetch(`/api/admin/invoices?${q.toString()}`);
+      const res = await apiClient(`/api/admin/invoices?${q.toString()}`);
       if (res.ok) {
         const j = await res.json();
         if (j.success) {
@@ -76,7 +77,7 @@ export default function AdminInvoicesPage() {
     setIsBackfilling(true);
     setActionMessage(null);
     try {
-      const res = await fetch('/api/admin/invoices/backfill', { method: 'POST' });
+      const res = await apiClient('/api/admin/invoices/backfill', { method: 'POST' });
       const j = await res.json();
       if (j.success) {
         setActionMessage({

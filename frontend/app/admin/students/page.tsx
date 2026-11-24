@@ -24,6 +24,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface StudentSummary {
   id: number;
@@ -80,7 +81,7 @@ export default function AdminStudentsPage() {
   const fetchStudents = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/students');
+      const res = await apiClient('/api/admin/students');
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) {
@@ -103,7 +104,7 @@ export default function AdminStudentsPage() {
     setIsLoadingDetail(true);
     setStudentDetail(null);
     try {
-      const res = await fetch(`/api/admin/students/${id}`);
+      const res = await apiClient(`/api/admin/students/${id}`);
       if (res.ok) {
         const j = await res.json();
         if (j.success && j.data) {
@@ -125,7 +126,7 @@ export default function AdminStudentsPage() {
 
     setIsUpdatingStatus(true);
     try {
-      const res = await fetch(`/api/admin/students/${studentId}`, {
+      const res = await apiClient(`/api/admin/students/${studentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

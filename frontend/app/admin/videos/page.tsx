@@ -28,12 +28,7 @@ import {
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
 import { UniversalVideoPlayer } from '@/components/classroom/UniversalVideoPlayer';
-
-function getCsrfToken(): string {
-  if (typeof document === 'undefined') return '';
-  const match = document.cookie.match(/(?:^|; )10q_csrf_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : '';
-}
+import { apiClient } from '@/lib/apiClient';
 
 interface VideoItem {
   id: number;
@@ -136,11 +131,11 @@ export default function AdminVideosPage() {
     setIsLoading(true);
     try {
       const [vidsRes, coursesRes, subsRes, chapsRes, topsRes] = await Promise.all([
-        fetch('/api/admin/videos'),
-        fetch('/api/admin/courses'),
-        fetch('/api/admin/subjects'),
-        fetch('/api/admin/chapters'),
-        fetch('/api/admin/topics'),
+        apiClient('/api/admin/videos'),
+        apiClient('/api/admin/courses'),
+        apiClient('/api/admin/subjects'),
+        apiClient('/api/admin/chapters'),
+        apiClient('/api/admin/topics'),
       ]);
 
       if (vidsRes.ok) {
@@ -301,11 +296,10 @@ export default function AdminVideosPage() {
       const url = editingVideo ? `/api/admin/videos/${editingVideo.id}` : '/api/admin/videos';
       const method = editingVideo ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
+      const res = await apiClient(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'x-csrf-token': getCsrfToken(),
         },
         body: JSON.stringify(payload),
       });
@@ -334,11 +328,8 @@ export default function AdminVideosPage() {
     setDeleteError(null);
 
     try {
-      const res = await fetch(`/api/admin/videos/${deleteConfirmVideo.id}`, {
+      const res = await apiClient(`/api/admin/videos/${deleteConfirmVideo.id}`, {
         method: 'DELETE',
-        headers: {
-          'x-csrf-token': getCsrfToken(),
-        },
       });
 
       const data = await res.json();

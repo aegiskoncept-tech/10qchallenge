@@ -23,6 +23,7 @@ import {
 import { FormSection, FormField } from './ui/FormComponents';
 import { PrimaryButton, SecondaryButton } from './ui/Buttons';
 import { RichTextEditor } from './ui/RichTextEditor';
+import { apiClient } from '@/lib/apiClient';
 
 export interface CourseFormData {
   id?: number | null;
@@ -152,7 +153,7 @@ export const CourseFormPanel: React.FC<CourseFormPanelProps> = ({
   // Fetch live exams & subjects if not provided
   useEffect(() => {
     if (exams.length === 0) {
-      fetch('/api/admin/exams')
+      apiClient('/api/admin/exams')
         .then((r) => r.json())
         .then((j) => {
           if (j.success && Array.isArray(j.data)) {
@@ -163,7 +164,7 @@ export const CourseFormPanel: React.FC<CourseFormPanelProps> = ({
     }
 
     if (subjects.length === 0) {
-      fetch('/api/admin/subjects')
+      apiClient('/api/admin/subjects')
         .then((r) => r.json())
         .then((j) => {
           if (j.success && Array.isArray(j.data)) {
@@ -215,7 +216,7 @@ export const CourseFormPanel: React.FC<CourseFormPanelProps> = ({
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('/api/upload', {
+      const res = await apiClient('/api/upload', {
         method: 'POST',
         body: formData,
       });

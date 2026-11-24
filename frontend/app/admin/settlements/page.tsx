@@ -19,6 +19,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface SettlementSummary {
   grossCaptured: number;
@@ -72,7 +73,7 @@ export default function AdminSettlementsPage() {
   const fetchSettlements = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/settlements');
+      const res = await apiClient('/api/admin/settlements');
       if (res.ok) {
         const j = await res.json();
         if (j.success) {
@@ -98,7 +99,7 @@ export default function AdminSettlementsPage() {
     setSuccessMsg(null);
 
     try {
-      const res = await fetch('/api/admin/settlements', {
+      const res = await apiClient('/api/admin/settlements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

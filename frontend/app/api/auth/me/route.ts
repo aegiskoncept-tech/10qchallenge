@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { extractAuthToken } from '@/lib/auth/serverAuth';
-import { validateSessionAndUser, CSRF_COOKIE_NAME } from '@/lib/auth/session';
+import { validateSessionAndUser, CSRF_COOKIE_NAME, SESSION_DURATION_SECONDS } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,9 +22,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const csrfToken = req.cookies.get(CSRF_COOKIE_NAME)?.value || result.session.csrfToken;
+    const csrfToken = result.session.csrfToken;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       authenticated: true,
       user: {
@@ -37,6 +37,23 @@ export async function GET(req: NextRequest) {
       },
       csrfToken,
     });
+
+    // Synchronize client-accessible CSRF cookie with the database session token
+    const isSecure =
+      process.env.COOKIE_SECURE === 'true' ||
+      (process.env.NODE_ENV === 'production' &&
+        !process.env.NEXT_PUBLIC_APP_URL?.startsWith('http://localhost') &&
+        !process.env.NEXT_PUBLIC_APP_URL?.startsWith('http://127.0.0.1'));
+
+    response.cookies.set(CSRF_COOKIE_NAME, csrfToken, {
+      httpOnly: false,
+      secure: isSecure,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: SESSION_DURATION_SECONDS,
+    });
+
+    return response;
   } catch (error: any) {
     console.error('[GET /api/auth/me Error]', error);
     return NextResponse.json(

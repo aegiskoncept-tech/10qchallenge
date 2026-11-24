@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface AdminUser {
   id: number;
@@ -47,7 +48,7 @@ export default function AdminRolesPage() {
   const fetchAdmins = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/roles');
+      const res = await apiClient('/api/admin/roles');
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) setAdmins(j.data);
@@ -70,7 +71,7 @@ export default function AdminRolesPage() {
     }
 
     try {
-      const res = await fetch('/api/admin/roles', {
+      const res = await apiClient('/api/admin/roles', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -98,7 +99,7 @@ export default function AdminRolesPage() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch('/api/admin/roles', {
+      const res = await apiClient('/api/admin/roles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),

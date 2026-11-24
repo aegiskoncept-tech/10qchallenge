@@ -91,9 +91,11 @@ export function setAuthCookies(
 }
 
 export function clearAuthCookies(response: NextResponse): void {
+  const isSecure = process.env.COOKIE_SECURE === 'true' || (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_APP_URL?.startsWith('http://localhost') && !process.env.NEXT_PUBLIC_APP_URL?.startsWith('http://127.0.0.1'));
+
   response.cookies.set(AUTH_COOKIE_NAME, '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecure,
     sameSite: 'lax',
     path: '/',
     maxAge: 0,
@@ -101,7 +103,7 @@ export function clearAuthCookies(response: NextResponse): void {
 
   response.cookies.set(CSRF_COOKIE_NAME, '', {
     httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecure,
     sameSite: 'lax',
     path: '/',
     maxAge: 0,

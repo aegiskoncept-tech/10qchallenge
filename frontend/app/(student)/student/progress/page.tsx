@@ -33,6 +33,7 @@ import type {
   TopicProgressItem,
   StudentLearningEventRecord,
 } from '@/lib/learning/types';
+import { apiClient } from '@/lib/apiClient';
 
 interface EnrolledCourse {
   enrollmentId: string;
@@ -66,13 +67,6 @@ export default function StudentProgressPage() {
   const [mutatingTopicId, setMutatingTopicId] = useState<number | null>(null);
   const [mutationSuccessMessage, setMutationSuccessMessage] = useState<string | null>(null);
   const [mutationErrorMessage, setMutationErrorMessage] = useState<string | null>(null);
-
-  // CSRF token extractor from cookie
-  const getCsrfToken = useCallback((): string => {
-    if (typeof document === 'undefined') return '';
-    const match = document.cookie.match(/(?:^|; )10q_csrf_token=([^;]*)/);
-    return match ? decodeURIComponent(match[1]) : '';
-  }, []);
 
   // Fetch initial summary and enrolled courses
   const fetchDashboardData = useCallback(async () => {
@@ -172,12 +166,10 @@ export default function StudentProgressPage() {
     setMutationErrorMessage(null);
 
     try {
-      const csrfToken = getCsrfToken();
-      const res = await fetch('/api/student/progress/topics', {
+      const res = await apiClient('/api/student/progress/topics', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-csrf-token': csrfToken,
         },
         body: JSON.stringify({
           courseId,

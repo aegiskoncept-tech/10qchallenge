@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User } from '@/types';
+import { apiClient, primeCsrfToken } from '@/lib/apiClient';
 
 interface RegisterPayload {
   fullName: string;
@@ -13,6 +14,7 @@ interface RegisterPayload {
 
 interface AuthContextType {
   user: User | null;
+  csrfToken: string | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
   isLoading: boolean;
@@ -26,11 +28,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const refreshUser = useCallback(async () => {
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await apiClient('/api/auth/me', {
         method: 'GET',
         cache: 'no-store',
       });
@@ -39,18 +42,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         if (data.authenticated && data.user) {
           setUser(data.user);
+          if (data.csrfToken) {
+            setCsrfToken(data.csrfToken);
+          }
           return;
         }
       }
       setUser(null);
+      setCsrfToken(null);
     } catch {
       setUser(null);
+      setCsrfToken(null);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    primeCsrfToken();
     refreshUser();
   }, [refreshUser]);
 
@@ -59,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password?: string
   ): Promise<{ success: boolean; error?: string; user?: User }> => {
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await apiClient('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -75,6 +84,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setUser(data.user);
+      if (data.csrfToken) {
+        setCsrfToken(data.csrfToken);
+      }
       return { success: true, user: data.user };
     } catch (err: any) {
       return {
@@ -88,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     payload: RegisterPayload
   ): Promise<{ success: boolean; error?: string; user?: User }> => {
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await apiClient('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -104,6 +116,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setUser(data.user);
+      if (data.csrfToken) {
+        setCsrfToken(data.csrfToken);
+      }
       return { success: true, user: data.user };
     } catch (err: any) {
       return {
@@ -115,13 +130,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      await fetch('/api/auth/logout', {
+      await apiClient('/api/auth/logout', {
         method: 'POST',
       });
     } catch {
       // Proceed with client cleanup
     } finally {
       setUser(null);
+      setCsrfToken(null);
       // Clean legacy localStorage keys if any remain
       if (typeof window !== 'undefined') {
         localStorage.removeItem('10q_auth_user_fresh_v1');
@@ -136,6 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        csrfToken,
         isAuthenticated: !!user,
         isAdmin: user?.role === 'ADMIN',
         isLoading,

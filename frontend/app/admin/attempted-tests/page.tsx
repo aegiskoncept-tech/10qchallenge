@@ -19,6 +19,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface AttemptSummary {
   id: string;
@@ -69,7 +70,7 @@ export default function AdminAttemptedTestsPage() {
   const fetchAttempts = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/attempted-tests');
+      const res = await apiClient('/api/admin/attempted-tests');
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) {
@@ -93,7 +94,7 @@ export default function AdminAttemptedTestsPage() {
     setIsLoadingDetail(true);
     setInspectDetail(null);
     try {
-      const res = await fetch(`/api/admin/attempted-tests/${attemptId}`);
+      const res = await apiClient(`/api/admin/attempted-tests/${attemptId}`);
       if (res.ok) {
         const j = await res.json();
         if (j.success && j.data) {

@@ -26,6 +26,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 import { MathRenderer } from '@/components/ui/MathRenderer';
 import { DoubtRecord, DoubtReply, DoubtStatus, DoubtSummaryMetrics } from '@/lib/doubts/types';
 
@@ -114,7 +115,7 @@ export default function AdminDoubtsPage() {
       const url = statusFilter !== 'ALL'
         ? `/api/admin/doubts?status=${encodeURIComponent(statusFilter)}`
         : '/api/admin/doubts';
-      const res = await fetch(url);
+      const res = await apiClient(url);
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) {
@@ -139,7 +140,7 @@ export default function AdminDoubtsPage() {
     setReplyError(null);
     setReplyText('');
     try {
-      const res = await fetch(`/api/admin/doubts/${id}`);
+      const res = await apiClient(`/api/admin/doubts/${id}`);
       if (res.ok) {
         const j = await res.json();
         if (j.success && j.data) {
@@ -170,7 +171,7 @@ export default function AdminDoubtsPage() {
           ? { note: replyText.trim() }
           : { message: replyText.trim(), visibility: 'STUDENT_VISIBLE' };
 
-      const res = await fetch(endpoint, {
+      const res = await apiClient(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -195,7 +196,7 @@ export default function AdminDoubtsPage() {
   const handleUpdateStatus = async (newStatus: DoubtStatus) => {
     if (!doubtDetail) return;
     try {
-      const res = await fetch(`/api/admin/doubts/${doubtDetail.id}`, {
+      const res = await apiClient(`/api/admin/doubts/${doubtDetail.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -216,7 +217,7 @@ export default function AdminDoubtsPage() {
 
     setIsAssigning(true);
     try {
-      const res = await fetch(`/api/admin/doubts/${doubtDetail.id}/assign`, {
+      const res = await apiClient(`/api/admin/doubts/${doubtDetail.id}/assign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

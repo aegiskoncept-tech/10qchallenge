@@ -24,6 +24,7 @@ import {
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
 import { MathRenderer } from '@/components/ui/MathRenderer';
 import { StudentNoteRecord } from '@/lib/notes/types';
+import { apiClient } from '@/lib/apiClient';
 
 interface NoteContext {
   courseId?: number;
@@ -116,7 +117,7 @@ export function NoteModal({
       try {
         if (activeNote?.id) {
           // PATCH existing note
-          const res = await fetch(`/api/student/notes/${activeNote.id}`, {
+          const res = await apiClient(`/api/student/notes/${activeNote.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -146,7 +147,7 @@ export function NoteModal({
           if (onSaved) onSaved(data.data);
         } else {
           // POST new note
-          const res = await fetch('/api/student/notes', {
+          const res = await apiClient('/api/student/notes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -246,7 +247,7 @@ export function NoteModal({
     if (!confirm('Are you sure you want to delete this note?')) return;
 
     try {
-      const res = await fetch(`/api/student/notes/${activeNote.id}`, { method: 'DELETE' });
+      const res = await apiClient(`/api/student/notes/${activeNote.id}`, { method: 'DELETE' });
       if (res.ok) {
         if (onDeleted) onDeleted(activeNote.id);
         onClose();

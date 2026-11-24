@@ -16,6 +16,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface SeoConfig {
   route: string;
@@ -61,7 +62,7 @@ export default function AdminSeoPage() {
   const fetchConfigs = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/seo');
+      const res = await apiClient('/api/admin/seo');
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) {
@@ -123,7 +124,7 @@ export default function AdminSeoPage() {
         ogDescription: formData.ogDescription?.trim() || formData.metaDescription,
       };
 
-      const res = await fetch('/api/admin/seo', {
+      const res = await apiClient('/api/admin/seo', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

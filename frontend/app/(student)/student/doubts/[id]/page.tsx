@@ -19,15 +19,10 @@ import {
   Download,
 } from 'lucide-react';
 import { DoubtRecord, DoubtReply, DoubtStatus, DoubtAttachmentItem } from '@/lib/doubts/types';
+import { apiClient } from '@/lib/apiClient';
 
 interface DoubtDetailPageProps {
   params: Promise<{ id: string }>;
-}
-
-function getCsrfToken(): string {
-  if (typeof document === 'undefined') return '';
-  const match = document.cookie.match(/(?:^|; )10q_csrf_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : '';
 }
 
 export default function StudentDoubtDetailPage({ params }: DoubtDetailPageProps) {
@@ -94,13 +89,11 @@ export default function StudentDoubtDetailPage({ params }: DoubtDetailPageProps)
     setIsUploading(true);
 
     try {
-      const csrf = getCsrfToken();
       const fd = new FormData();
       fd.append('file', file);
 
-      const res = await fetch('/api/student/doubts/upload', {
+      const res = await apiClient('/api/student/doubts/upload', {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrf },
         body: fd,
       });
 
@@ -131,12 +124,10 @@ export default function StudentDoubtDetailPage({ params }: DoubtDetailPageProps)
     setActionSuccess(null);
 
     try {
-      const csrf = getCsrfToken();
-      const res = await fetch(`/api/student/doubts/${doubtId}/replies`, {
+      const res = await apiClient(`/api/student/doubts/${doubtId}/replies`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': csrf,
         },
         body: JSON.stringify({
           message: replyText.trim(),
@@ -163,10 +154,8 @@ export default function StudentDoubtDetailPage({ params }: DoubtDetailPageProps)
   const handleMarkResolved = async () => {
     setActionError(null);
     try {
-      const csrf = getCsrfToken();
-      const res = await fetch(`/api/student/doubts/${doubtId}/resolve`, {
+      const res = await apiClient(`/api/student/doubts/${doubtId}/resolve`, {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrf },
       });
       const json = await res.json();
       if (res.ok && json.success) {
@@ -186,12 +175,10 @@ export default function StudentDoubtDetailPage({ params }: DoubtDetailPageProps)
 
     setActionError(null);
     try {
-      const csrf = getCsrfToken();
-      const res = await fetch(`/api/student/doubts/${doubtId}/reopen`, {
+      const res = await apiClient(`/api/student/doubts/${doubtId}/reopen`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': csrf,
         },
         body: JSON.stringify({ reason }),
       });

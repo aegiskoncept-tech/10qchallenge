@@ -19,6 +19,7 @@ import {
   ListOrdered,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface TestSeriesItem {
   id: number;
@@ -64,7 +65,7 @@ export default function AdminTestSeriesPage() {
   const fetchTests = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/test-series');
+      const res = await apiClient('/api/admin/test-series');
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) setTests(j.data);
@@ -128,7 +129,7 @@ export default function AdminTestSeriesPage() {
       const url = editingTest ? `/api/admin/test-series/${editingTest.id}` : '/api/admin/test-series';
       const method = editingTest ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
+      const res = await apiClient(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -149,7 +150,7 @@ export default function AdminTestSeriesPage() {
   const handleDelete = async (id: number) => {
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/admin/test-series/${id}`, { method: 'DELETE' });
+      const res = await apiClient(`/api/admin/test-series/${id}`, { method: 'DELETE' });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || 'Failed to delete.');
       setDeleteConfirmId(null);

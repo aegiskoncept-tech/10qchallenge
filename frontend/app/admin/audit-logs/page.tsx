@@ -16,6 +16,7 @@ import {
   Code,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface AuditLogItem {
   id: number;
@@ -62,7 +63,7 @@ export default function AdminAuditLogsPage() {
       if (selectedModule !== 'ALL') url += `&module=${selectedModule}`;
       if (searchTerm.trim()) url += `&search=${encodeURIComponent(searchTerm.trim())}`;
 
-      const res = await fetch(url);
+      const res = await apiClient(url);
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) {

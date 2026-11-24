@@ -17,6 +17,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface PaymentItem {
   id: string;
@@ -54,7 +55,7 @@ export default function AdminPaymentsPage() {
       if (statusFilter !== 'ALL') q.set('status', statusFilter);
       if (searchTerm.trim()) q.set('search', searchTerm.trim());
 
-      const res = await fetch(`/api/admin/payments?${q.toString()}`);
+      const res = await apiClient(`/api/admin/payments?${q.toString()}`);
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) {
@@ -89,7 +90,7 @@ export default function AdminPaymentsPage() {
     setReconcilingId(paymentId);
     setReconcileMsg(null);
     try {
-      const res = await fetch('/api/admin/settlements/reconcile', {
+      const res = await apiClient('/api/admin/settlements/reconcile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ paymentId }),

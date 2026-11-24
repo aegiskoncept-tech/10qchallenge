@@ -17,6 +17,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface OrderRecord {
   id: string;
@@ -82,7 +83,7 @@ export default function AdminOrdersPage() {
   const fetchOrders = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/orders');
+      const res = await apiClient('/api/admin/orders');
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) {
@@ -141,7 +142,7 @@ export default function AdminOrdersPage() {
         throw new Error('Please enter a valid refund amount greater than zero.');
       }
 
-      const res = await fetch('/api/admin/refunds', {
+      const res = await apiClient('/api/admin/refunds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

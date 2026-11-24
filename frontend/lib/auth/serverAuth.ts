@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import type { NextRequest, NextResponse } from 'next/server';
 import { AUTH_COOKIE_NAME, CSRF_COOKIE_NAME, validateSessionAndUser } from './session';
 import { AuthDb, type UserEntity, type SessionEntity } from './database';
@@ -25,8 +26,70 @@ export function extractAuthToken(req: NextRequest | any): string | null {
   return null;
 }
 
+function safeCompare(a: string, b: string): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+export function validateOrigin(req: NextRequest | any): boolean {
+  const method = (req.method || 'GET').toUpperCase();
+  if (['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    return true;
+  }
+
+  const origin = req.headers.get('origin');
+  const referer = req.headers.get('referer');
+  const target = origin || referer;
+
+  // If no Origin or Referer header is sent, allow CSRF token check to decide
+  if (!target) {
+    return true;
+  }
+
+  try {
+    const url = new URL(target);
+    const targetHost = url.host.toLowerCase();
+    const targetHostname = url.hostname.toLowerCase();
+
+    // Trusted production, staging, and local development hosts
+    const allowedHosts = new Set([
+      '10qchallenge.com',
+      'www.10qchallenge.com',
+      'localhost:3000',
+      '127.0.0.1:3000',
+      'localhost',
+      '127.0.0.1',
+    ]);
+
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+      try {
+        const appUrl = new URL(process.env.NEXT_PUBLIC_APP_URL);
+        allowedHosts.add(appUrl.host.toLowerCase());
+        allowedHosts.add(appUrl.hostname.toLowerCase());
+      } catch {}
+    }
+
+    if (process.env.APP_URL) {
+      try {
+        const appUrl = new URL(process.env.APP_URL);
+        allowedHosts.add(appUrl.host.toLowerCase());
+        allowedHosts.add(appUrl.hostname.toLowerCase());
+      } catch {}
+    }
+
+    // Security: Never add unverified client-supplied Host or X-Forwarded-Host to allowedHosts.
+    // The incoming Origin / Referer target must strictly match a pre-authorized trusted host.
+    return allowedHosts.has(targetHost) || allowedHosts.has(targetHostname);
+  } catch {
+    return false;
+  }
+}
+
 export function validateCsrfToken(req: NextRequest | any, expectedCsrfToken?: string): boolean {
-  const method = req.method.toUpperCase();
+  const method = (req.method || 'GET').toUpperCase();
   // Safe read-only HTTP methods do not require CSRF verification
   if (['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     return true;
@@ -38,19 +101,33 @@ export function validateCsrfToken(req: NextRequest | any, expectedCsrfToken?: st
     return true;
   }
 
-  // For cookie-based sessions, verify CSRF token
-  const clientCsrfHeader = req.headers.get('x-csrf-token') || req.headers.get('X-CSRF-Token');
-  const clientCsrfCookie = req.cookies.get(CSRF_COOKIE_NAME)?.value;
-
-  if (!clientCsrfHeader) {
+  // Validate request origin against trusted domains
+  if (!validateOrigin(req)) {
     return false;
   }
 
-  if (expectedCsrfToken && clientCsrfHeader === expectedCsrfToken) {
+  // For cookie-based sessions, verify CSRF token from header (case-insensitive checks)
+  const clientCsrfHeader =
+    req.headers.get('x-csrf-token') ||
+    req.headers.get('X-CSRF-Token') ||
+    req.headers.get('x-xsrf-token') ||
+    req.headers.get('X-XSRF-Token') ||
+    req.headers.get('csrf-token') ||
+    req.headers.get('CSRF-Token');
+
+  const clientCsrfCookie = req.cookies.get(CSRF_COOKIE_NAME)?.value;
+
+  if (!clientCsrfHeader || typeof clientCsrfHeader !== 'string') {
+    return false;
+  }
+
+  // 1. Verify against session CSRF token (database-bound) using constant-time comparison
+  if (expectedCsrfToken && safeCompare(clientCsrfHeader, expectedCsrfToken)) {
     return true;
   }
 
-  if (clientCsrfCookie && clientCsrfHeader === clientCsrfCookie) {
+  // 2. Verify against client CSRF cookie (double-submit cookie pattern) using constant-time comparison
+  if (clientCsrfCookie && safeCompare(clientCsrfHeader, clientCsrfCookie)) {
     return true;
   }
 

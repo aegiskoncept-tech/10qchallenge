@@ -19,6 +19,7 @@ import {
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
 import { NoteModal } from '@/components/student/NoteModal';
 import { StudentNoteRecord, NotesSummaryMetrics } from '@/lib/notes/types';
+import { apiClient } from '@/lib/apiClient';
 
 export default function StudentNotesPage() {
   const [notes, setNotes] = useState<StudentNoteRecord[]>([]);
@@ -39,7 +40,7 @@ export default function StudentNotesPage() {
       if (filterPinned) params.set('isPinned', 'true');
       if (searchTerm.trim()) params.set('search', searchTerm.trim());
 
-      const res = await fetch(`/api/student/notes?${params.toString()}`);
+      const res = await apiClient(`/api/student/notes?${params.toString()}`);
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) {
@@ -66,7 +67,7 @@ export default function StudentNotesPage() {
   const togglePin = async (e: React.MouseEvent, noteId: number) => {
     e.stopPropagation();
     try {
-      const res = await fetch(`/api/student/notes/${noteId}/pin`, { method: 'POST' });
+      const res = await apiClient(`/api/student/notes/${noteId}/pin`, { method: 'POST' });
       if (res.ok) {
         fetchNotes();
       }
@@ -79,7 +80,7 @@ export default function StudentNotesPage() {
     e.stopPropagation();
     if (!confirm('Are you sure you want to delete this study note?')) return;
     try {
-      const res = await fetch(`/api/student/notes/${noteId}`, { method: 'DELETE' });
+      const res = await apiClient(`/api/student/notes/${noteId}`, { method: 'DELETE' });
       if (res.ok) {
         setNotes((prev) => prev.filter((n) => n.id !== noteId));
         if (metrics) {

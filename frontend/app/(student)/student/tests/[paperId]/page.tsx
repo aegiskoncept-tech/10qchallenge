@@ -18,6 +18,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface TestPaperDetail {
   id: number;
@@ -95,18 +96,8 @@ export default function TestPaperDetailPage({ params }: TestPaperDetailPageProps
     setStartError(null);
 
     try {
-      const csrfMatch = typeof document !== 'undefined' ? document.cookie.match(/(?:^|; )10q_csrf_token=([^;]*)/) : null;
-      const csrfToken = csrfMatch ? decodeURIComponent(csrfMatch[1]) : '';
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['x-csrf-token'] = csrfToken;
-      }
-
-      const res = await fetch(`/api/student/tests/${paperId}/start`, {
+      const res = await apiClient(`/api/student/tests/${paperId}/start`, {
         method: 'POST',
-        headers,
       });
 
       const data = await res.json();

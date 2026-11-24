@@ -16,6 +16,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface NotificationItem {
   id: number;
@@ -51,7 +52,7 @@ export default function AdminNotificationsPage() {
   const fetchNotifs = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/notifications');
+      const res = await apiClient('/api/admin/notifications');
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) setNotifications(j.data);
@@ -82,7 +83,7 @@ export default function AdminNotificationsPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/admin/notifications', {
+      const res = await apiClient('/api/admin/notifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -110,7 +111,7 @@ export default function AdminNotificationsPage() {
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to retract/delete this notification?')) return;
     try {
-      await fetch(`/api/admin/notifications/${id}`, { method: 'DELETE' });
+      await apiClient(`/api/admin/notifications/${id}`, { method: 'DELETE' });
       await fetchNotifs();
     } catch (err) {
       console.error(err);

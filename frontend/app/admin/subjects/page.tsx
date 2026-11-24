@@ -14,6 +14,7 @@ import {
   Hash,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface Subject {
   id: number;
@@ -55,7 +56,7 @@ export default function AdminSubjectsPage() {
   const fetchSubjects = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/subjects');
+      const res = await apiClient('/api/admin/subjects');
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
@@ -123,7 +124,7 @@ export default function AdminSubjectsPage() {
       const url = editingSubject ? `/api/admin/subjects/${editingSubject.id}` : '/api/admin/subjects';
       const method = editingSubject ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
+      const res = await apiClient(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -148,7 +149,7 @@ export default function AdminSubjectsPage() {
     setIsDeleting(true);
 
     try {
-      const res = await fetch(`/api/admin/subjects/${id}`, {
+      const res = await apiClient(`/api/admin/subjects/${id}`, {
         method: 'DELETE',
       });
       const json = await res.json();

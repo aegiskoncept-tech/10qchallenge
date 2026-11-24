@@ -26,12 +26,7 @@ import {
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
 import { SecurePdfViewer } from '@/components/classroom/SecurePdfViewer';
-
-function getCsrfToken(): string {
-  if (typeof document === 'undefined') return '';
-  const match = document.cookie.match(/(?:^|; )10q_csrf_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : '';
-}
+import { apiClient } from '@/lib/apiClient';
 
 interface DocumentItem {
   id: number;
@@ -159,11 +154,11 @@ export default function AdminDocumentsPage() {
     setIsLoading(true);
     try {
       const [docsRes, coursesRes, subsRes, chapsRes, topsRes] = await Promise.all([
-        fetch('/api/admin/documents'),
-        fetch('/api/admin/courses'),
-        fetch('/api/admin/subjects'),
-        fetch('/api/admin/chapters'),
-        fetch('/api/admin/topics'),
+        apiClient('/api/admin/documents'),
+        apiClient('/api/admin/courses'),
+        apiClient('/api/admin/subjects'),
+        apiClient('/api/admin/chapters'),
+        apiClient('/api/admin/topics'),
       ]);
 
       if (docsRes.ok) {
@@ -366,13 +361,8 @@ export default function AdminDocumentsPage() {
 
       setUploadProgress(50);
 
-      const csrf = getCsrfToken();
-      const headers: Record<string, string> = {};
-      if (csrf) headers['x-csrf-token'] = csrf;
-
-      const res = await fetch(url, {
+      const res = await apiClient(url, {
         method,
-        headers,
         body: formData,
       });
 
@@ -400,11 +390,7 @@ export default function AdminDocumentsPage() {
     setIsDeleting(true);
     setDeleteError(null);
     try {
-      const csrf = getCsrfToken();
-      const headers: Record<string, string> = {};
-      if (csrf) headers['x-csrf-token'] = csrf;
-
-      const res = await fetch(`/api/admin/documents/${doc.id}`, { method: 'DELETE', headers });
+      const res = await apiClient(`/api/admin/documents/${doc.id}`, { method: 'DELETE' });
       const json = await res.json();
       if (!res.ok || !json.success) {
         throw new Error(json.error || 'Failed to delete document.');

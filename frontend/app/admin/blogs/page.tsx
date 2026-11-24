@@ -41,6 +41,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 import {
   BlogRecord,
   BlogStatus,
@@ -119,7 +120,7 @@ export default function AdminBlogsPage() {
       if (statusFilter !== 'ALL') q.set('status', statusFilter);
       q.set('sortBy', sortBy);
 
-      const res = await fetch(`/api/admin/blogs?${q.toString()}`);
+      const res = await apiClient(`/api/admin/blogs?${q.toString()}`);
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
@@ -137,9 +138,9 @@ export default function AdminBlogsPage() {
   const fetchTaxonomyAndMedia = async () => {
     try {
       const [catsRes, authsRes, mediaRes] = await Promise.all([
-        fetch('/api/admin/blogs/categories'),
-        fetch('/api/admin/blogs/authors'),
-        fetch('/api/admin/blogs/media'),
+        apiClient('/api/admin/blogs/categories'),
+        apiClient('/api/admin/blogs/authors'),
+        apiClient('/api/admin/blogs/media'),
       ]);
       if (catsRes.ok) {
         const data = await catsRes.json();
@@ -326,7 +327,7 @@ export default function AdminBlogsPage() {
 
       let res: Response;
       if (editingBlog) {
-        res = await fetch(`/api/admin/blogs/${editingBlog.id}`, {
+        res = await apiClient(`/api/admin/blogs/${editingBlog.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -335,7 +336,7 @@ export default function AdminBlogsPage() {
           }),
         });
       } else {
-        res = await fetch('/api/admin/blogs', {
+        res = await apiClient('/api/admin/blogs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -364,7 +365,7 @@ export default function AdminBlogsPage() {
   // Quick Action Handlers
   const handleQuickAction = async (id: number, action: 'publish' | 'archive' | 'restore' | 'duplicate') => {
     try {
-      const res = await fetch(`/api/admin/blogs/${id}`, {
+      const res = await apiClient(`/api/admin/blogs/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
@@ -383,7 +384,7 @@ export default function AdminBlogsPage() {
   const handleScheduleSubmit = async () => {
     if (!scheduleModalBlog || !scheduleDateTime) return;
     try {
-      const res = await fetch(`/api/admin/blogs/${scheduleModalBlog.id}`, {
+      const res = await apiClient(`/api/admin/blogs/${scheduleModalBlog.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -408,7 +409,7 @@ export default function AdminBlogsPage() {
     if (!deleteConfirmId) return;
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/admin/blogs/${deleteConfirmId}`, { method: 'DELETE' });
+      const res = await apiClient(`/api/admin/blogs/${deleteConfirmId}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setDeleteConfirmId(null);
@@ -425,7 +426,7 @@ export default function AdminBlogsPage() {
 
   const handleGeneratePreviewLink = async (blogId: number) => {
     try {
-      const res = await fetch('/api/admin/blogs/preview-token', {
+      const res = await apiClient('/api/admin/blogs/preview-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ blogId }),
@@ -445,7 +446,7 @@ export default function AdminBlogsPage() {
     if (!confirm('Are you sure you want to restore this revision? It will overwrite current form fields.')) return;
 
     try {
-      const res = await fetch(`/api/admin/blogs/${editingBlog.id}/revisions`, {
+      const res = await apiClient(`/api/admin/blogs/${editingBlog.id}/revisions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ revisionId }),

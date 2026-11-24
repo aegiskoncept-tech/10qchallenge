@@ -16,6 +16,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface RefundItem {
   id: string;
@@ -59,7 +60,7 @@ export default function AdminRefundsPage() {
       if (statusFilter !== 'ALL') q.set('status', statusFilter);
       if (searchTerm.trim()) q.set('search', searchTerm.trim());
 
-      const res = await fetch(`/api/admin/refunds?${q.toString()}`);
+      const res = await apiClient(`/api/admin/refunds?${q.toString()}`);
       if (res.ok) {
         const j = await res.json();
         if (j.success && Array.isArray(j.data)) {
@@ -101,7 +102,7 @@ export default function AdminRefundsPage() {
     setSuccessMsg(null);
 
     try {
-      const res = await fetch('/api/admin/refunds', {
+      const res = await apiClient('/api/admin/refunds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

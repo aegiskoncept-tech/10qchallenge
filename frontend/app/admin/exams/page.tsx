@@ -19,6 +19,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface ExamCategory {
   id: number;
@@ -66,7 +67,7 @@ export default function AdminExamsPage() {
   const fetchExams = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/exams');
+      const res = await apiClient('/api/admin/exams');
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
@@ -136,7 +137,7 @@ export default function AdminExamsPage() {
       const url = editingExam ? `/api/admin/exams/${editingExam.id}` : '/api/admin/exams';
       const method = editingExam ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
+      const res = await apiClient(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -159,7 +160,7 @@ export default function AdminExamsPage() {
   const handleToggleStatus = async (exam: ExamCategory) => {
     setTogglingId(exam.id);
     try {
-      const res = await fetch(`/api/admin/exams/${exam.id}`, {
+      const res = await apiClient(`/api/admin/exams/${exam.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -186,7 +187,7 @@ export default function AdminExamsPage() {
     setIsDeleting(true);
 
     try {
-      const res = await fetch(`/api/admin/exams/${id}`, {
+      const res = await apiClient(`/api/admin/exams/${id}`, {
         method: 'DELETE',
       });
       const json = await res.json();

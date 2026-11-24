@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DoubtAttachmentItem } from '@/lib/doubts/types';
+import { apiClient } from '@/lib/apiClient';
 
 interface DoubtModalProps {
   isOpen: boolean;
@@ -32,12 +33,6 @@ interface DoubtModalProps {
   videoTimestampSeconds?: number;
   documentId?: number;
   onDoubtCreated?: (doubt: any) => void;
-}
-
-function getCsrfToken(): string {
-  if (typeof document === 'undefined') return '';
-  const match = document.cookie.match(/(?:^|; )10q_csrf_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : '';
 }
 
 export const DoubtModal: React.FC<DoubtModalProps> = ({
@@ -94,13 +89,11 @@ export const DoubtModal: React.FC<DoubtModalProps> = ({
     setIsUploading(true);
 
     try {
-      const csrf = getCsrfToken();
       const fd = new FormData();
       fd.append('file', file);
 
-      const res = await fetch('/api/student/doubts/upload', {
+      const res = await apiClient('/api/student/doubts/upload', {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrf },
         body: fd,
       });
 
@@ -140,12 +133,10 @@ export const DoubtModal: React.FC<DoubtModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const csrf = getCsrfToken();
-      const res = await fetch('/api/student/doubts', {
+      const res = await apiClient('/api/student/doubts', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': csrf,
         },
         body: JSON.stringify({
           courseId,

@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
 import { MathText } from '@/components/student/MathText';
+import { apiClient } from '@/lib/apiClient';
 
 interface Question {
   id: number;
@@ -170,11 +171,11 @@ export default function AdminQuestionsPage() {
     setIsLoading(true);
     try {
       const [qRes, cRes, sRes, chRes, tRes] = await Promise.all([
-        fetch('/api/admin/questions'),
-        fetch('/api/admin/courses'),
-        fetch('/api/admin/subjects'),
-        fetch('/api/admin/chapters'),
-        fetch('/api/admin/topics'),
+        apiClient('/api/admin/questions'),
+        apiClient('/api/admin/courses'),
+        apiClient('/api/admin/subjects'),
+        apiClient('/api/admin/chapters'),
+        apiClient('/api/admin/topics'),
       ]);
 
       if (qRes.ok) {
@@ -494,13 +495,13 @@ export default function AdminQuestionsPage() {
 
       let res;
       if (editingQuestion) {
-        res = await fetch(`/api/admin/questions/${editingQuestion.id}`, {
+        res = await apiClient(`/api/admin/questions/${editingQuestion.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       } else {
-        res = await fetch('/api/admin/questions', {
+        res = await apiClient('/api/admin/questions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -537,7 +538,7 @@ export default function AdminQuestionsPage() {
 
     // Probe dependencies
     try {
-      const res = await fetch(`/api/admin/questions/${q.id}`);
+      const res = await apiClient(`/api/admin/questions/${q.id}`);
       if (res.ok) {
         // Safe check
       }
@@ -551,7 +552,7 @@ export default function AdminQuestionsPage() {
     setDeleteError(null);
 
     try {
-      const res = await fetch(`/api/admin/questions/${deleteConfirmQuestion.id}`, {
+      const res = await apiClient(`/api/admin/questions/${deleteConfirmQuestion.id}`, {
         method: 'DELETE',
       });
       const json = await res.json();
@@ -577,7 +578,7 @@ export default function AdminQuestionsPage() {
     if (!deleteConfirmQuestion) return;
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/admin/questions/${deleteConfirmQuestion.id}`, {
+      const res = await apiClient(`/api/admin/questions/${deleteConfirmQuestion.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: false }),

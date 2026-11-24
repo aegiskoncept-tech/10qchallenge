@@ -17,6 +17,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
+import { apiClient } from '@/lib/apiClient';
 
 interface Topic {
   id: number;
@@ -99,10 +100,10 @@ export default function AdminTopicsPage() {
     setIsLoading(true);
     try {
       const [topRes, courseRes, subjRes, chapRes] = await Promise.all([
-        fetch('/api/admin/topics'),
-        fetch('/api/admin/courses'),
-        fetch('/api/admin/subjects'),
-        fetch('/api/admin/chapters'),
+        apiClient('/api/admin/topics'),
+        apiClient('/api/admin/courses'),
+        apiClient('/api/admin/subjects'),
+        apiClient('/api/admin/chapters'),
       ]);
 
       if (topRes.ok) {
@@ -212,7 +213,7 @@ export default function AdminTopicsPage() {
         : '/api/admin/topics';
       const method = editingTopic ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
+      const res = await apiClient(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -236,7 +237,7 @@ export default function AdminTopicsPage() {
     setIsDeleting(true);
     setDeleteError(null);
     try {
-      const res = await fetch(`/api/admin/topics/${id}`, {
+      const res = await apiClient(`/api/admin/topics/${id}`, {
         method: 'DELETE',
       });
       const json = await res.json();

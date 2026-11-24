@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/admin/ui/LoadingSpinner';
 import { MathText } from '@/components/student/MathText';
+import { apiClient } from '@/lib/apiClient';
 
 interface QuestionItem {
   id: number;
@@ -138,7 +139,7 @@ export default function TestSeriesQuestionLinkerPage({ params }: PageProps) {
     setLoadError(null);
     setConflictError(null);
     try {
-      const res = await fetch(`/api/admin/test-series/${paperId}/questions`);
+      const res = await apiClient(`/api/admin/test-series/${paperId}/questions`);
       const json = await res.json();
       if (!res.ok || !json.success) {
         throw new Error(json.error || 'Failed to load test paper data.');
@@ -316,7 +317,7 @@ export default function TestSeriesQuestionLinkerPage({ params }: PageProps) {
 
     try {
       const questionIds = linkedQuestions.map((q) => q.id);
-      const res = await fetch(`/api/admin/test-series/${paperId}/questions`, {
+      const res = await apiClient(`/api/admin/test-series/${paperId}/questions`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

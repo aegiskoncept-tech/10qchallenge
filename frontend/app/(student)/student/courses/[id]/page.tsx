@@ -3,6 +3,7 @@
 import React, { useState, useEffect, use, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { apiClient } from '@/lib/apiClient';
 import {
   ArrowLeft,
   BookOpen,
@@ -57,12 +58,6 @@ interface FlatLessonItem {
   chapterName: string;
   item: TopicProgressItem | SanitizedClassroomVideo | SanitizedClassroomDocument;
   title: string;
-}
-
-function getCsrfToken(): string {
-  if (typeof document === 'undefined') return '';
-  const match = document.cookie.match(/(?:^|; )10q_csrf_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : '';
 }
 
 function ClassroomLoadingSkeleton() {
@@ -616,12 +611,10 @@ function ClassroomPageContent({ params }: ClassroomPageProps) {
     setActionErrorMessage(null);
 
     try {
-      const csrfToken = getCsrfToken();
-      const res = await fetch('/api/student/progress/topics', {
+      const res = await apiClient('/api/student/progress/topics', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-csrf-token': csrfToken,
         },
         body: JSON.stringify({
           courseId,
@@ -665,12 +658,10 @@ function ClassroomPageContent({ params }: ClassroomPageProps) {
     setActionErrorMessage(null);
 
     try {
-      const csrfToken = getCsrfToken();
-      const res = await fetch('/api/student/progress/content', {
+      const res = await apiClient('/api/student/progress/content', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-csrf-token': csrfToken,
         },
         body: JSON.stringify({
           courseId,
@@ -714,12 +705,10 @@ function ClassroomPageContent({ params }: ClassroomPageProps) {
     setActionErrorMessage(null);
 
     try {
-      const csrfToken = getCsrfToken();
-      const res = await fetch('/api/student/progress/content', {
+      const res = await apiClient('/api/student/progress/content', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-csrf-token': csrfToken,
         },
         body: JSON.stringify({
           courseId,
